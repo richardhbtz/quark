@@ -325,12 +325,17 @@ void CLI::printHelp() {
     println("");
     println(colorize("Examples:", Colors::BOLD));
     println("  quark main.k              Compile main.k to main");
-    println("  quark -o program main.k Compile to program");
+    println("  quark -o program main.k   Compile to program");
     println("  quark -v main.k           Compile with verbose output");
     println("  quark --emit-asm main.k   Emit assembly instead of LLVM IR");
-        println("");
-        println("  " + colorize("Add custom libraries:", Colors::BRIGHT_GREEN));
-        println("    quark -L libs -l sqlite main.k   # Add ./libs to search path and link sqlite");
+    println("");
+    println("  " + colorize("Add custom libraries:", Colors::BRIGHT_GREEN));
+    println("    quark -L libs -l sqlite main.k   # Add ./libs to search path and link sqlite");
+    println("");
+    println(colorize("Cache Options:", Colors::BOLD));
+    println("  --no-cache                Disable compilation cache");
+    println("  --clear-cache             Clear the compilation cache before compiling");
+    println("  --cache-dir <dir>         Set custom cache directory (default: .quark_cache)");
 }
 
 // CLIArgs implementation
@@ -397,6 +402,17 @@ CLIArgs CLIArgs::parse(int argc, char** argv) {
             }
         } else if (arg.rfind("-l", 0) == 0 && arg.size() > 2) {
             args.linkLibraries.push_back(arg.substr(2));
+        } else if (arg == "--no-cache") {
+            args.useCache = false;
+        } else if (arg == "--clear-cache") {
+            args.clearCache = true;
+        } else if (arg == "--cache-dir") {
+            if (i + 1 < argc) {
+                args.cacheDir = argv[++i];
+            } else {
+                g_cli.error("Option --cache-dir requires an argument");
+                args.showHelp = true;
+            }
         } else if (arg.find(".k") != std::string::npos) {
             args.inputFile = arg;
         } else if (arg[0] == '-') {

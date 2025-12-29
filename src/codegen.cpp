@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <random>
 #include <chrono>
@@ -38,6 +39,7 @@
 #include <llvm-c/Target.h>
 #include <llvm-c/Analysis.h>
 #include <llvm-c/BitWriter.h>
+#include <llvm-c/BitReader.h>
 
 // New Pass Manager includes
 #include <llvm/IR/Module.h>
@@ -1096,4 +1098,90 @@ void CodeGen::runOptimizationPasses()
 
     if (verbose_)
         printf("[codegen] modern optimization passes completed\n");
+}
+
+std::vector<uint8_t> CodeGen::emitBitcode()
+{
+    if (!module_) {
+        return {};
+    }
+    
+    LLVMMemoryBufferRef memBuf = LLVMWriteBitcodeToMemoryBuffer(module_);
+    if (!memBuf) {
+        if (verbose_)
+            printf("[codegen] failed to write bitcode to memory buffer\n");
+        return {};
+    }
+    
+    const char* data = LLVMGetBufferStart(memBuf);
+    size_t size = LLVMGetBufferSize(memBuf);
+    
+    std::vector<uint8_t> result(data, data + size);
+    LLVMDisposeMemoryBuffer(memBuf);
+    
+    if (verbose_)
+        printf("[codegen] emitted %zu bytes of bitcode\n", result.size());
+    
+    return result;
+}
+
+bool CodeGen::loadBitcode(const std::vector<uint8_t>& bitcode)
+{
+    if (bitcode.empty()) {
+        return false;
+    }
+    
+    LLVMMemoryBufferRef memBuf = LLVMCreateMemoryBufferWithMemoryRangeCopy(
+        reinterpret_cast<const char*>(bitcode.data()),
+        bitcode.size(),
+        "cached_module"
+    );
+    
+    if (!memBuf) {
+        if (verbose_)
+            printf("[codegen] failed to create memory buffer from bitcode\n");
+        return false;
+    }
+    
+    LLVMModuleRef loadedModule = nullptr;
+    char* errorMsg = nullptr;
+    
+    if (LLVMParseBitcodeInContext2(llvmCtx_, memBuf, &loadedModule) != 0) {
+        if (verbose_)
+            printf("[codegen] failed to parse bitcode: %s\n", errorMsg ? errorMsg : "unknown error");
+        LLVMDisposeMessage(errorMsg);
+        return false;
+    }
+    
+    if (module_) {
+        LLVMDisposeModule(module_);
+    }
+    module_ = loadedModule;
+    
+    if (verbose_)
+        printf("[codegen] loaded module from bitcode\n");
+    
+    return true;
+}
+
+bool CodeGen::loadBitcodeFromFile(const std::string& path)
+{
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file) {
+        if (verbose_)
+            printf("[codegen] failed to open bitcode file: %s\n", path.c_str());
+        return false;
+    }
+    
+    std::streamsize size = file.tellg();
+    file.seekg(0, std::ios::beg);
+    
+    std::vector<uint8_t> bitcode(size);
+    if (!file.read(reinterpret_cast<char*>(bitcode.data()), size)) {
+        if (verbose_)
+            printf("[codegen] failed to read bitcode file: %s\n", path.c_str());
+        return false;
+    }
+    
+    return loadBitcode(bitcode);
 }

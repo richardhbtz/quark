@@ -160,6 +160,10 @@ int main(int argc, char **argv)
     options.link_libraries = linkLibPtrs.data();
     options.link_library_count = linkLibPtrs.size();
 
+    options.use_cache = args.useCache ? 1 : 0;
+    options.clear_cache = args.clearCache ? 1 : 0;
+    options.cache_dir = args.cacheDir.c_str();
+
     int status = quark_compiler_compile_file(compiler, &options);
     int exitCode = (status == QUARK_COMPILE_OK) ? 0 : 1;
 

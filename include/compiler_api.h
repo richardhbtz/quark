@@ -45,6 +45,9 @@ typedef struct QuarkCompilerOptions {
     size_t library_path_count;
     const char* const* link_libraries;
     size_t link_library_count;
+    int use_cache;
+    int clear_cache;
+    const char* cache_dir;
 } QuarkCompilerOptions;
 
 typedef struct QuarkCompilerHandle QuarkCompilerHandle;

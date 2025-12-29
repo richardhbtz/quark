@@ -2,6 +2,7 @@
 
 #include "../include/cli.h"
 #include "../include/codegen.h"
+#include "../include/compilation_cache.h"
 #include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/lexer.h"
@@ -37,6 +38,7 @@ struct QuarkCompilerHandle {
 extern CLI g_cli;
 extern std::unique_ptr<ErrorReporter> g_errorReporter;
 extern std::unique_ptr<SourceManager> g_sourceManager;
+extern std::unique_ptr<CompilationCache> g_compilationCache;
 
 namespace {
 
@@ -160,6 +162,21 @@ static int compileInternal(QuarkCompilerHandle* handle,
     auto additionalLibraries = copyStrings(options.link_libraries, options.link_library_count);
     auto additionalLibraryPaths = copyStrings(options.library_paths, options.library_path_count);
 
+    bool useCache = options.use_cache != 0;
+    bool clearCache = options.clear_cache != 0;
+    std::string cacheDir = options.cache_dir ? options.cache_dir : ".quark_cache";
+    
+    if (useCache && !g_compilationCache) {
+        g_compilationCache = std::make_unique<CompilationCache>(cacheDir);
+    }
+    
+    if (clearCache && g_compilationCache) {
+        g_compilationCache->invalidateAll();
+        if (verbose) {
+            g_cli.info("Cleared compilation cache");
+        }
+    }
+
     g_sourceManager = std::make_unique<SourceManager>();
     g_errorReporter = std::make_unique<ErrorReporter>(g_cli);
     g_sourceManager->addFile(logicalName, source);
@@ -168,6 +185,47 @@ static int compileInternal(QuarkCompilerHandle* handle,
 
     try {
         bool showProgress = (options.verbosity >= QUARK_VERBOSITY_NORMAL) && g_cli.isColorEnabled();
+        
+        if (useCache && g_compilationCache) {
+            if (g_compilationCache->hasValidCache(logicalName, source, optimizationLevel, freestanding)) {
+                auto cachedBitcode = g_compilationCache->getCachedBitcode(logicalName);
+                if (cachedBitcode && !cachedBitcode->empty()) {
+                    if (verbose) {
+                        g_cli.info("Cache hit for " + logicalName);
+                    }
+                    
+                    CodeGen codegen(verbose, optimize, optimizationLevel, freestanding,
+                        std::vector<std::string>(additionalLibraries),
+                        std::vector<std::string>(additionalLibraryPaths),
+                        showProgress, &ctx);
+                    
+                    if (codegen.loadBitcode(*cachedBitcode)) {
+                        if (codegen.emitExecutable(outputPath)) {
+                            g_cli.success("Compilation completed (cached)!");
+                            
+                            std::string displayPath = outputPath;
+                            try {
+                                std::filesystem::path absPath = std::filesystem::absolute(outputPath);
+                                std::filesystem::path currentPath = std::filesystem::current_path();
+                                displayPath = std::filesystem::relative(absPath, currentPath).string();
+                            } catch (...) {}
+                            g_cli.info("Generated executable: " + displayPath);
+                            
+                            handle->impl.lastErrorCount = 0;
+                            handle->impl.lastWarningCount = 0;
+                            return QUARK_COMPILE_OK;
+                        }
+                    }
+                    
+                    if (verbose) {
+                        g_cli.warning("Failed to use cached bitcode, recompiling...");
+                    }
+                    g_compilationCache->invalidate(logicalName);
+                }
+            } else if (verbose) {
+                g_cli.info("Cache miss for " + logicalName);
+            }
+        }
         
         if (!showProgress) {
             g_cli.startSpinner("Compiling " + logicalName);
@@ -200,6 +258,18 @@ static int compileInternal(QuarkCompilerHandle* handle,
         CodeGen codegen(verbose, optimize, optimizationLevel, freestanding,
             std::move(additionalLibraries), std::move(additionalLibraryPaths), showProgress, &ctx);
         codegen.generate(ast.get(), outputPath);
+
+        if (useCache && g_compilationCache) {
+            auto bitcode = codegen.emitBitcode();
+            if (!bitcode.empty()) {
+                std::vector<std::string> dependencies;
+                g_compilationCache->storeBitcode(logicalName, source, bitcode, 
+                                                  optimizationLevel, freestanding, dependencies);
+                if (verbose) {
+                    g_cli.info("Stored compilation result in cache");
+                }
+            }
+        }
 
         if (!showProgress) {
             g_cli.stopSpinner(true);

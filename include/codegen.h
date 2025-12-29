@@ -29,9 +29,11 @@ public:
         CompilationContext* ctx = nullptr);
     ~CodeGen();
     void generate(ProgramAST *program, const std::string &outFile);
-    // Emit the in-memory LLVM module to a native executable (platform-specific).
-    // Returns true on success, false on failure (errors are printed to stderr).
     bool emitExecutable(const std::string &outPath);
+    
+    std::vector<uint8_t> emitBitcode();
+    bool loadBitcode(const std::vector<uint8_t>& bitcode);
+    bool loadBitcodeFromFile(const std::string& path);
 
 private:
     // LLVM context and module

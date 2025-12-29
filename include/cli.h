@@ -164,6 +164,10 @@ struct CLIArgs
     std::vector<std::string> includePaths;
     std::vector<std::string> libraryPaths;
     std::vector<std::string> linkLibraries;
+    
+    bool useCache = true;
+    bool clearCache = false;
+    std::string cacheDir = ".quark_cache";
 
     // Parse command line arguments
     static CLIArgs parse(int argc, char **argv);
