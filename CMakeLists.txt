@@ -1,6 +1,11 @@
 set(BUILD_SHARED_LIBS OFF)
 set(CMAKE_BUILD_TYPE Release)
 
+# Set vcpkg triplet for static libraries on Windows (must be set before project())
+if(WIN32)
+    set(VCPKG_TARGET_TRIPLET "x64-windows-static-release" CACHE STRING "")
+endif()
+
 cmake_minimum_required(VERSION 3.16)
 
 project(Quark VERSION 1.0.0 LANGUAGES C CXX)
