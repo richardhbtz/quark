@@ -1,4 +1,5 @@
 #include "../include/parser.h"
+#include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/source_manager.h"
 #include <stdexcept>
@@ -13,7 +14,8 @@
 #include <functional>
 #include <fstream>
 
-Parser::Parser(Lexer &lex, bool verbose) : lex_(lex), verbose_(verbose)
+Parser::Parser(Lexer &lex, bool verbose, CompilationContext* ctx) 
+    : lex_(lex), verbose_(verbose), ctx_(ctx)
 {
     cur_ = lex_.peek();
     if (verbose_)
@@ -41,12 +43,24 @@ Token Parser::peekToken()
     return peeked_;
 }
 
+ErrorReporter* Parser::errorReporter() const {
+    if (ctx_) return &ctx_->errorReporter;
+    return g_errorReporter.get();
+}
+
+SourceManager* Parser::sourceManager() const {
+    if (ctx_) return &ctx_->sourceManager;
+    return g_sourceManager.get();
+}
+
 void Parser::expect(TokenKind kind, const std::string &msg)
 {
     if (cur_.kind != kind)
     {
-                if (g_errorReporter && g_sourceManager) {
-            auto file = g_sourceManager->getFile(cur_.location.filename);
+        auto* er = errorReporter();
+        auto* sm = sourceManager();
+        if (er && sm) {
+            auto file = sm->getFile(cur_.location.filename);
             if (file) {
                 std::string errorCode = ErrorCodes::UNEXPECTED_TOKEN;
                 if (msg.find("semicolon") != std::string::npos || msg.find("';'") != std::string::npos) {
@@ -57,7 +71,6 @@ void Parser::expect(TokenKind kind, const std::string &msg)
                 throw EnhancedParseError(msg, cur_.location, file->content, errorCode);
             }
         }
-        // Fallback to legacy error
         throw ParseError(msg, cur_.location);
     }
     next();
@@ -123,9 +136,11 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
             next();
         } else {
-                        if (cur_.kind != tok_string) {
-                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(cur_.location.filename);
+            if (cur_.kind != tok_string) {
+                auto* er = errorReporter();
+                auto* sm = sourceManager();
+                if (er && sm) {
+                    auto file = sm->getFile(cur_.location.filename);
                     if (file) {
                         throw EnhancedParseError("expected string literal path after #include", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
                     }
@@ -136,7 +151,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             next();
         }
         
-                if (cur_.kind == tok_semicolon)
+        if (cur_.kind == tok_semicolon)
             next();
 
         auto inc = std::make_unique<IncludeStmt>();
@@ -580,20 +595,23 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             next(); // '}'
             return std::make_unique<FunctionAST>(name, typeOrReturn, params, std::move(body));
         }
-                if (cur_.kind != tok_equal)
+        if (cur_.kind != tok_equal)
             throw ParseError("expected '=' after variable name", cur_.location);
         next();
         auto initExpr = parseExpression();
-                        SourceLocation semicolonLoc = cur_.location;
+        SourceLocation semicolonLoc = cur_.location;
         if (cur_.kind != tok_semicolon)
         {
-            int span = 1;             if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(semicolonLoc.filename);
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
+            int span = 1;
+            if (er && sm) {
+                auto file = sm->getFile(semicolonLoc.filename);
                 if (file) {
-                                        SourceLocation errorLoc = semicolonLoc;
-                                                            if (errorLoc.line > 1 && errorLoc.column <= 5) {
+                    SourceLocation errorLoc = semicolonLoc;
+                    if (errorLoc.line > 1 && errorLoc.column <= 5) {
                         errorLoc.line -= 1;
-                                                if (errorLoc.line - 1 < file->lines.size()) {
+                        if (errorLoc.line - 1 < file->lines.size()) {
                             errorLoc.column = static_cast<int>(file->lines[errorLoc.line - 1].length());
                         }
                     }
@@ -691,22 +709,26 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             if (!isTypeToken(cur_) && cur_.kind != tok_identifier) {
                 throw ParseError("expected type after ':'", cur_.location);
             }
-            varType = parseTypeString();         }
+            varType = parseTypeString();
+        }
         
         if (cur_.kind != tok_equal)
             throw ParseError("expected '=' after variable name", cur_.location);
         next();
         auto initExpr = parseExpression();
-                        SourceLocation semicolonLoc = cur_.location;
+        SourceLocation semicolonLoc = cur_.location;
         if (cur_.kind != tok_semicolon)
         {
-            int span = 1;             if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(semicolonLoc.filename);
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
+            int span = 1;
+            if (er && sm) {
+                auto file = sm->getFile(semicolonLoc.filename);
                 if (file) {
-                                        SourceLocation errorLoc = semicolonLoc;
-                                                            if (errorLoc.line > 1 && errorLoc.column <= 5) {
+                    SourceLocation errorLoc = semicolonLoc;
+                    if (errorLoc.line > 1 && errorLoc.column <= 5) {
                         errorLoc.line -= 1;
-                                                if (errorLoc.line - 1 < file->lines.size()) {
+                        if (errorLoc.line - 1 < file->lines.size()) {
                             errorLoc.column = static_cast<int>(file->lines[errorLoc.line - 1].length());
                         }
                     }
@@ -757,7 +779,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return std::make_unique<WhileStmt>(std::move(condition), std::move(body));
     }
 
-    // Return statement
     if (cur_.kind == tok_ret)
     {
         next();
@@ -765,9 +786,11 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         
         if (cur_.kind != tok_semicolon)
         {
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
             int span = std::max(1, (int)cur_.text.size());
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(cur_.location.filename);
+            if (er && sm) {
+                auto file = sm->getFile(cur_.location.filename);
                 if (file) {
                     throw EnhancedParseError("expected ';' after return statement", cur_.location, file->content, ErrorCodes::MISSING_SEMICOLON, span);
                 }
@@ -779,7 +802,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return std::make_unique<ReturnStmt>(std::move(returnValue));
     }
 
-    // Match statement
     if (cur_.kind == tok_match)
     {
         next();
@@ -804,19 +826,21 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return matchStmt;
     }
 
-        if (cur_.kind == tok_mul)
+    if (cur_.kind == tok_mul)
     {
-        next(); // consume '*'
+        next();
         auto ptrExpr = parseExpression();
         
         if (cur_.kind == tok_equal)
         {
-            next(); // consume '='
+            next();
             auto value = parseExpression();
             if (cur_.kind != tok_semicolon) {
+                auto* er = errorReporter();
+                auto* sm = sourceManager();
                 int span = std::max(1, (int)cur_.text.size());
-                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(cur_.location.filename);
+                if (er && sm) {
+                    auto file = sm->getFile(cur_.location.filename);
                     if (file) {
                         throw EnhancedParseError("expected ';' after assignment", cur_.location, file->content, ErrorCodes::MISSING_SEMICOLON, span);
                     }
@@ -825,7 +849,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
             next();
             
-                                    auto derefExpr = std::make_unique<DereferenceExpr>(std::move(ptrExpr));
+            auto derefExpr = std::make_unique<DereferenceExpr>(std::move(ptrExpr));
             return std::make_unique<DerefAssignStmt>(std::move(derefExpr), std::move(value));
         }
         else
@@ -834,18 +858,20 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         }
     }
 
-        if (cur_.kind == tok_identifier || cur_.kind == tok_this)
+    if (cur_.kind == tok_identifier || cur_.kind == tok_this)
     {
-                auto expr = parseExpression();
+        auto expr = parseExpression();
         
-                if (cur_.kind == tok_equal)
+        if (cur_.kind == tok_equal)
         {
-            next(); // consume '='
+            next();
             auto value = parseExpression();
             if (cur_.kind != tok_semicolon) {
+                auto* er = errorReporter();
+                auto* sm = sourceManager();
                 int span = std::max(1, (int)cur_.text.size());
-                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(cur_.location.filename);
+                if (er && sm) {
+                    auto file = sm->getFile(cur_.location.filename);
                     if (file) {
                         throw EnhancedParseError("expected ';' after assignment", cur_.location, file->content, ErrorCodes::MISSING_SEMICOLON, span);
                     }
@@ -854,22 +880,24 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
             next();
             
-                        if (auto memberAccess = dynamic_cast<MemberAccessExpr*>(expr.get()))
+            if (auto memberAccess = dynamic_cast<MemberAccessExpr*>(expr.get()))
             {
-                                auto object = std::move(memberAccess->object);
+                auto object = std::move(memberAccess->object);
                 std::string fieldName = memberAccess->fieldName;
-                expr.release();                 return std::make_unique<MemberAssignStmt>(std::move(object), fieldName, std::move(value));
+                expr.release();
+                return std::make_unique<MemberAssignStmt>(std::move(object), fieldName, std::move(value));
             }
-                        else if (auto arrayAccess = dynamic_cast<ArrayAccessExpr*>(expr.get()))
+            else if (auto arrayAccess = dynamic_cast<ArrayAccessExpr*>(expr.get()))
             {
-                                auto array = std::move(arrayAccess->array);
+                auto array = std::move(arrayAccess->array);
                 auto index = std::move(arrayAccess->index);
-                expr.release();                 return std::make_unique<ArrayAssignStmt>(std::move(array), std::move(index), std::move(value));
+                expr.release();
+                return std::make_unique<ArrayAssignStmt>(std::move(array), std::move(index), std::move(value));
             }
-                        else if (auto varExpr = dynamic_cast<VariableExprAST*>(expr.get()))
+            else if (auto varExpr = dynamic_cast<VariableExprAST*>(expr.get()))
             {
                 std::string varName = varExpr->name;
-                expr.release(); // Release ownership
+                expr.release();
                 return std::make_unique<AssignStmtAST>(varName, std::move(value));
             }
             else
@@ -878,10 +906,12 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
         }
         
-                if (cur_.kind != tok_semicolon) {
+        if (cur_.kind != tok_semicolon) {
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
             int span = std::max(1, (int)cur_.text.size());
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(cur_.location.filename);
+            if (er && sm) {
+                auto file = sm->getFile(cur_.location.filename);
                 if (file) {
                     throw EnhancedParseError("expected ';' after expression", cur_.location, file->content, ErrorCodes::MISSING_SEMICOLON, span);
                 }
@@ -892,13 +922,15 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return std::make_unique<ExprStmtAST>(std::move(expr));
     }
     
-        if (cur_.kind == tok_number || cur_.kind == tok_string || cur_.kind == tok_paren_open || cur_.kind == tok_this)
+    if (cur_.kind == tok_number || cur_.kind == tok_string || cur_.kind == tok_paren_open || cur_.kind == tok_this)
     {
         auto expr = parseExpression();
         if (cur_.kind != tok_semicolon) {
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
             int span = std::max(1, (int)cur_.text.size());
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(cur_.location.filename);
+            if (er && sm) {
+                auto file = sm->getFile(cur_.location.filename);
                 if (file) {
                     throw EnhancedParseError("expected ';' after expression", cur_.location, file->content, ErrorCodes::MISSING_SEMICOLON, span);
                 }
@@ -909,16 +941,20 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return std::make_unique<ExprStmtAST>(std::move(expr));
     }
 
-        if (g_errorReporter && g_sourceManager) {
-        auto file = g_sourceManager->getFile(cur_.location.filename);
-        if (file) {
-            std::string errorMsg = "unknown statement";
-                        if (cur_.kind == tok_identifier) {
-                errorMsg = "unexpected identifier '" + cur_.text + "' - did you forget a type or keyword?";
-            } else if (cur_.kind != tok_eof) {
-                errorMsg = "unexpected token '" + cur_.text + "' when expecting a statement";
+    {
+        auto* er = errorReporter();
+        auto* sm = sourceManager();
+        if (er && sm) {
+            auto file = sm->getFile(cur_.location.filename);
+            if (file) {
+                std::string errorMsg = "unknown statement";
+                if (cur_.kind == tok_identifier) {
+                    errorMsg = "unexpected identifier '" + cur_.text + "' - did you forget a type or keyword?";
+                } else if (cur_.kind != tok_eof) {
+                    errorMsg = "unexpected token '" + cur_.text + "' when expecting a statement";
+                }
+                throw EnhancedParseError(errorMsg, cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
             }
-            throw EnhancedParseError(errorMsg, cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
         }
     }
     throw ParseError("unknown statement", cur_.location);

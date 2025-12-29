@@ -1,7 +1,8 @@
 #include "../include/expression_codegen.h"
-#include <stdexcept>
+#include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/source_manager.h"
+#include <stdexcept>
 #include <cstdio>
 #include <optional>
 #include <cmath>
@@ -11,14 +12,14 @@
 #include <functional>
 
 ExpressionCodeGen::ExpressionCodeGen(LLVMContextRef ctx, LLVMModuleRef module, LLVMBuilderRef builder, 
-                                     ExternalFunctions* externalFunctions, bool verbose)
-    : ctx_(ctx), module_(module), builder_(builder), externalFunctions_(externalFunctions), builtinFunctions_(nullptr), verbose_(verbose)
+                                     ExternalFunctions* externalFunctions, bool verbose,
+                                     CompilationContext* compilationCtx)
+    : ctx_(ctx), module_(module), builder_(builder), externalFunctions_(externalFunctions), 
+      builtinFunctions_(nullptr), verbose_(verbose), ctx_compilation_(compilationCtx)
 {
-    // Initialize types
     int32_t_ = LLVMInt32TypeInContext(ctx_);
     int8ptr_t_ = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
 
-    // FILE* type (opaque)
 #ifdef _WIN32
     fileptr_t_ = LLVMPointerType(LLVMStructCreateNamed(ctx_, "struct._iobuf"), 0);
 #else
@@ -28,7 +29,7 @@ ExpressionCodeGen::ExpressionCodeGen(LLVMContextRef ctx, LLVMModuleRef module, L
     float_t_ = LLVMFloatTypeInContext(ctx_);
     double_t_ = LLVMDoubleTypeInContext(ctx_);
     
-        g_function_map_ = nullptr;
+    g_function_map_ = nullptr;
     g_named_values_ = nullptr;
     g_const_values_ = nullptr;
     g_function_param_types_ = nullptr;
@@ -40,6 +41,16 @@ ExpressionCodeGen::ExpressionCodeGen(LLVMContextRef ctx, LLVMModuleRef module, L
 
 void ExpressionCodeGen::setBuiltinFunctions(BuiltinFunctions* builtinFunctions) {
     builtinFunctions_ = builtinFunctions;
+}
+
+ErrorReporter* ExpressionCodeGen::errorReporter() const {
+    if (ctx_compilation_) return &ctx_compilation_->errorReporter;
+    return g_errorReporter.get();
+}
+
+SourceManager* ExpressionCodeGen::sourceManager() const {
+    if (ctx_compilation_) return &ctx_compilation_->sourceManager;
+    return g_sourceManager.get();
 }
 
 void ExpressionCodeGen::setGlobalSymbolTables(std::unordered_map<std::string, LLVMValueRef>* functionMap,
@@ -115,8 +126,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 }
             }
             if (objectStructName.empty()) {
-                                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(expr->location.filename);
+                                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                    auto file = sm->getFile(expr->location.filename);
                     if (file) {
                         throw EnhancedCodeGenError("undefined variable '" + varExpr->name + "'", expr->location, file->content, ErrorCodes::SYMBOL_NOT_FOUND, (int)std::max<size_t>(1, varExpr->name.size()));
                     }
@@ -127,8 +138,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             // Find the struct definition
             auto defIt = g_struct_defs_->find(objectStructName);
             if (defIt == g_struct_defs_->end()) {
-                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(expr->location.filename);
+                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                    auto file = sm->getFile(expr->location.filename);
                     if (file) {
                         throw EnhancedCodeGenError("struct definition not found: " + objectStructName, expr->location, file->content, ErrorCodes::SYMBOL_NOT_FOUND, (int)std::max<size_t>(1, objectStructName.size()));
                     }
@@ -191,16 +202,16 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 }
             }
             
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("field '" + memberAccess->fieldName + "' not found in struct " + objectStructName, expr->location, file->content, ErrorCodes::SYMBOL_NOT_FOUND, (int)std::max<size_t>(1, memberAccess->fieldName.size()));
                 }
             }
             throw CodeGenError("field '" + memberAccess->fieldName + "' not found in struct " + objectStructName, expr->location);
         } else {
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("complex member access expressions not yet supported", expr->location, file->content, ErrorCodes::INVALID_OPERATION, 1);
                 }
@@ -325,8 +336,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
     
         if (auto *arrayLiteral = dynamic_cast<ArrayLiteralExpr *>(expr)) {
         if (arrayLiteral->elements.empty()) {
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("Cannot infer type for empty array literal", expr->location, file->content, ErrorCodes::INVALID_TYPE, 2);
                 }
@@ -347,8 +358,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         } else if (arrayType.type == QuarkType::String) {
                         return TypeInfo(QuarkType::Int, expr->location);
         } else {
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("Cannot index non-array type", expr->location, file->content, ErrorCodes::INVALID_OPERATION, 1);
                 }
@@ -400,8 +411,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             }
         }
         
-        if (g_errorReporter && g_sourceManager) {
-            auto file = g_sourceManager->getFile(expr->location.filename);
+        auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+            auto file = sm->getFile(expr->location.filename);
             if (file) {
                 throw EnhancedCodeGenError("undefined variable '" + v->name + "'", expr->location, file->content, ErrorCodes::SYMBOL_NOT_FOUND, (int)std::max<size_t>(1, v->name.size()));
             }
@@ -471,8 +482,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 return TypeInfo(QuarkType::Void, expr->location);
             }
             // Unknown array method
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("Unknown array method: " + methodCall->methodName, expr->location, file->content, ErrorCodes::FUNCTION_NOT_FOUND, (int)std::max<size_t>(1, methodCall->methodName.size()));
                 }
@@ -539,8 +550,8 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             }
         }
 
-                if (g_errorReporter && g_sourceManager) {
-            auto file = g_sourceManager->getFile(expr->location.filename);
+                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+            auto file = sm->getFile(expr->location.filename);
             if (file) {
                 throw EnhancedCodeGenError("Unknown method call: " + methodCall->methodName, expr->location, file->content, ErrorCodes::FUNCTION_NOT_FOUND, (int)std::max<size_t>(1, methodCall->methodName.size()));
             }
@@ -689,8 +700,8 @@ void ExpressionCodeGen::checkTypeCompatibility(QuarkType expected, QuarkType act
 
     std::string expectedStr = typeToStr(expected);
     std::string actualStr = typeToStr(actual);
-    if (g_errorReporter && g_sourceManager) {
-        auto file = g_sourceManager->getFile(loc.filename);
+    auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+        auto file = sm->getFile(loc.filename);
         if (file) {
             throw EnhancedCodeGenError("type mismatch in " + context + ": expected " + expectedStr + ", got " + actualStr, loc, file->content, ErrorCodes::TYPE_MISMATCH, (int)std::max<size_t>(1, context.size()));
         }
@@ -822,8 +833,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
         if (dstQt == QuarkType::Pointer) {
             if (!dstTy) {
-                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(expr->location.filename);
+                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                    auto file = sm->getFile(expr->location.filename);
                     if (file) {
                         throw EnhancedCodeGenError("unsupported pointer target type '" + cast->targetTypeName + "'", expr->location, file->content, ErrorCodes::INVALID_TYPE, (int)std::max<size_t>(1, cast->targetTypeName.size()));
                     }
@@ -875,8 +886,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 return LLVMBuildPointerCast(builder_, val, dstTy, "ptr_cast_unknown");
             }
 
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("unsupported cast to pointer type", expr->location, file->content, ErrorCodes::INVALID_TYPE, (int)std::max<size_t>(1, cast->targetTypeName.size()));
                 }
@@ -891,8 +902,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 }
                 return val;
             }
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("cannot cast to str from non-string type", expr->location, file->content, ErrorCodes::INVALID_TYPE, 1);
                 }
@@ -914,8 +925,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             } else if (srcT.type == QuarkType::Boolean) {
                 return val;
             }
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("unsupported cast to bool", expr->location, file->content, ErrorCodes::INVALID_TYPE, 4);
                 }
@@ -941,8 +952,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 LLVMValueRef asBool = LLVMBuildICmp(builder_, LLVMIntNE, val, zero, "to_bool");
                 return LLVMBuildZExt(builder_, asBool, int32_t_, "bool_to_int2");
             }
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("unsupported cast to int", expr->location, file->content, ErrorCodes::INVALID_TYPE, 3);
                 }
@@ -966,8 +977,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 LLVMValueRef asInt = LLVMBuildPtrToInt(builder_, val, LLVMInt64TypeInContext(ctx_), "ptr_to_i64_for_float");
                 return LLVMBuildUIToFP(builder_, asInt, float_t_, "ptr_to_float");
             }
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("unsupported cast to float", expr->location, file->content, ErrorCodes::INVALID_TYPE, 5);
                 }
@@ -990,8 +1001,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 LLVMValueRef asInt = LLVMBuildPtrToInt(builder_, val, LLVMInt64TypeInContext(ctx_), "ptr_to_i64");
                 return LLVMBuildUIToFP(builder_, asInt, double_t_, "ptr_to_double");
             }
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("unsupported cast to double", expr->location, file->content, ErrorCodes::INVALID_TYPE, 6);
                 }
@@ -999,8 +1010,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             throw CodeGenError("unsupported cast to double", expr->location);
         }
 
-                if (g_errorReporter && g_sourceManager) {
-            auto file = g_sourceManager->getFile(expr->location.filename);
+                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+            auto file = sm->getFile(expr->location.filename);
             if (file) {
                 throw EnhancedCodeGenError("unsupported cast target type '" + cast->targetTypeName + "'", expr->location, file->content, ErrorCodes::INVALID_TYPE, (int)std::max<size_t>(1, cast->targetTypeName.size()));
             }
@@ -1483,8 +1494,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                     if (!availableFuncs.empty()) availableFuncs += ", ";
                     availableFuncs += pair.first;
                 }
-                if (g_errorReporter && g_sourceManager) {
-                    auto file = g_sourceManager->getFile(c->location.filename);
+                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                    auto file = sm->getFile(c->location.filename);
                     if (file) {
                         throw EnhancedCodeGenError("unknown function '" + c->callee + "'", c->location, file->content, ErrorCodes::FUNCTION_NOT_FOUND, (int)std::max<size_t>(1, c->callee.size()));
                     }
@@ -1519,8 +1530,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                     
                     if (isVariadic) {
                                                 if (c->args.size() < expectedTypes.size()) {
-                            if (g_errorReporter && g_sourceManager) {
-                                auto file = g_sourceManager->getFile(c->location.filename);
+                            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                                auto file = sm->getFile(c->location.filename);
                                 if (file) {
                                     throw EnhancedCodeGenError("variadic function '" + c->callee + "' expects at least " +
                                                                std::to_string(expectedTypes.size()) + " arguments but got " + 
@@ -1533,8 +1544,8 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                         }
                     } else {
                                                 if (c->args.size() != expectedTypes.size()) {
-                            if (g_errorReporter && g_sourceManager) {
-                                auto file = g_sourceManager->getFile(c->location.filename);
+                            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                                auto file = sm->getFile(c->location.filename);
                                 if (file) {
                                     throw EnhancedCodeGenError("function '" + c->callee + "' expects " +
                                                                std::to_string(expectedTypes.size()) + " arguments but got " + 
@@ -1868,8 +1879,8 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
 
         // Ensure pointer type
         if (LLVMGetTypeKind(LLVMTypeOf(ptrValue)) != LLVMPointerTypeKind) {
-            if (g_errorReporter && g_sourceManager) {
-                auto file = g_sourceManager->getFile(expr->location.filename);
+            auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+                auto file = sm->getFile(expr->location.filename);
                 if (file) {
                     throw EnhancedCodeGenError("dereference of non-pointer value in integer context", expr->location, file->content, ErrorCodes::INVALID_OPERATION, 1);
                 }
@@ -3811,8 +3822,8 @@ LLVMValueRef ExpressionCodeGen::genDereference(DereferenceExpr *deref) {
     // Ensure we have a pointer
     LLVMTypeRef ptrTy = LLVMTypeOf(ptrValue);
     if (LLVMGetTypeKind(ptrTy) != LLVMPointerTypeKind) {
-                if (g_errorReporter && g_sourceManager) {
-            auto file = g_sourceManager->getFile(deref->location.filename);
+                auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
+            auto file = sm->getFile(deref->location.filename);
             if (file) {
                 throw EnhancedCodeGenError("dereference of non-pointer value", deref->location, file->content, ErrorCodes::INVALID_OPERATION, 1);
             }
@@ -3904,9 +3915,9 @@ LLVMValueRef ExpressionCodeGen::genArrayLiteral(ArrayLiteralExpr *arrayLiteral) 
     if (verbose_) printf("[codegen] generating array literal with %zu elements\n", arrayLiteral->elements.size());
 
     if (arrayLiteral->elements.empty()) {
-        if (g_errorReporter && g_sourceManager) {
+        auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
                         SourceLocation loc = arrayLiteral->location;
-            auto file = g_sourceManager->getFile(loc.filename);
+            auto file = sm->getFile(loc.filename);
             std::string src = file ? file->content : std::string();
             throw EnhancedCodeGenError("Cannot generate code for empty array literal", loc, src, ErrorCodes::INVALID_TYPE, 2);
         }

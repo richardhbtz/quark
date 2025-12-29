@@ -2,6 +2,7 @@
 
 #include "../include/cli.h"
 #include "../include/codegen.h"
+#include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/lexer.h"
 #include "../include/parser.h"
@@ -161,13 +162,14 @@ static int compileInternal(QuarkCompilerHandle* handle,
 
     g_sourceManager = std::make_unique<SourceManager>();
     g_errorReporter = std::make_unique<ErrorReporter>(g_cli);
-
     g_sourceManager->addFile(logicalName, source);
+    
+    CompilationContext ctx(g_cli, *g_errorReporter, *g_sourceManager);
 
     try {
         bool showProgress = (options.verbosity >= QUARK_VERBOSITY_NORMAL) && g_cli.isColorEnabled();
         
-                if (!showProgress) {
+        if (!showProgress) {
             g_cli.startSpinner("Compiling " + logicalName);
             g_cli.updateSpinner("Lexical analysis - tokenizing source code");
         }
@@ -177,13 +179,13 @@ static int compileInternal(QuarkCompilerHandle* handle,
         if (!showProgress) {
             g_cli.updateSpinner("Syntax analysis - building AST");
         }
-        Parser parser(lexer, verbose);
+        Parser parser(lexer, verbose, &ctx);
         auto ast = parser.parseProgram();
 
         if (!showProgress) {
             g_cli.updateSpinner("Semantic analysis - type checking");
         }
-        SemanticAnalyzer semanticAnalyzer(*g_errorReporter, *g_sourceManager, logicalName, verbose);
+        SemanticAnalyzer semanticAnalyzer(ctx.errorReporter, ctx.sourceManager, logicalName, verbose);
         if (!semanticAnalyzer.analyze(ast.get())) {
             g_cli.stopSpinner(false);
             g_errorReporter->printSummary();
@@ -196,7 +198,7 @@ static int compileInternal(QuarkCompilerHandle* handle,
             g_cli.updateSpinner("Code generation - emitting LLVM IR");
         }
         CodeGen codegen(verbose, optimize, optimizationLevel, freestanding,
-            std::move(additionalLibraries), std::move(additionalLibraryPaths), showProgress);
+            std::move(additionalLibraries), std::move(additionalLibraryPaths), showProgress, &ctx);
         codegen.generate(ast.get(), outputPath);
 
         if (!showProgress) {

@@ -16,8 +16,8 @@
 #include <vector>
 #include <memory>
 
-// Forward declaration
 class CompilationProgress;
+struct CompilationContext;
 
 class CodeGen
 {
@@ -25,7 +25,8 @@ public:
     CodeGen(bool verbose = false, bool optimize = false, int optimizationLevel = 2, bool freestanding = false,
         std::vector<std::string> additionalLibraries = {},
         std::vector<std::string> additionalLibraryPaths = {},
-        bool showProgress = false);
+        bool showProgress = false,
+        CompilationContext* ctx = nullptr);
     ~CodeGen();
     void generate(ProgramAST *program, const std::string &outFile);
     // Emit the in-memory LLVM module to a native executable (platform-specific).
@@ -34,7 +35,7 @@ public:
 
 private:
     // LLVM context and module
-    LLVMContextRef ctx_ = nullptr;
+    LLVMContextRef llvmCtx_ = nullptr;
     LLVMModuleRef module_ = nullptr;
     LLVMBuilderRef builder_ = nullptr;
     
@@ -60,7 +61,7 @@ private:
     std::unordered_map<std::string, LLVMTypeRef> g_named_types_;
     std::unordered_map<std::string, StructDefStmt*> g_struct_defs_;
     std::unordered_map<std::string, LLVMTypeRef> g_struct_types_;
-    std::unordered_map<std::string, bool> g_variadic_functions_; // Track which functions are variadic
+    std::unordered_map<std::string, bool> g_variadic_functions_;
     
     bool verbose_ = false;
     bool optimize_ = false;
@@ -70,10 +71,9 @@ private:
     std::vector<std::string> additionalLibraries_;
     std::vector<std::string> additionalLibraryPaths_;
     std::unique_ptr<CompilationProgress> progress_;
+    CompilationContext* ctx_ = nullptr;
     
-    // Helper methods
     void initializeCodeGenModules();
     void declareFunctions(const std::vector<FunctionAST*>& functions);
     void generateMainFunction(ProgramAST* program, bool hasUserMain, bool hasTopLevelStmts);
-    void runOptimizationPasses();
-};
+    void runOptimizationPasses();};

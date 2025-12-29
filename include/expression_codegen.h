@@ -8,11 +8,16 @@
 #include <optional>
 #include <unordered_map>
 
+struct CompilationContext;
+class ErrorReporter;
+class SourceManager;
+
 class ExpressionCodeGen
 {
 public:
     ExpressionCodeGen(LLVMContextRef ctx, LLVMModuleRef module, LLVMBuilderRef builder, 
-                      ExternalFunctions* externalFunctions, bool verbose = false);
+                      ExternalFunctions* externalFunctions, bool verbose = false,
+                      CompilationContext* compilationCtx = nullptr);
     ~ExpressionCodeGen() = default;
     
     // Set builtin functions reference
@@ -80,6 +85,10 @@ private:
     ExternalFunctions* externalFunctions_;
     BuiltinFunctions* builtinFunctions_;
     bool verbose_;
+    CompilationContext* ctx_compilation_ = nullptr;
+    
+    ErrorReporter* errorReporter() const;
+    SourceManager* sourceManager() const;
 
     // LLVM types
     LLVMTypeRef int32_t_;    // int (32-bit signed integer)

@@ -5,6 +5,9 @@
 #include <stdexcept>
 #include <string>
 
+class ErrorReporter;
+class SourceManager;
+
 struct ASTNode
 {
     SourceLocation location;
@@ -310,19 +313,26 @@ private:
     }
 };
 
+struct CompilationContext;
+
 class Parser
 {
 public:
-    explicit Parser(Lexer &lex, bool verbose = false);
+    explicit Parser(Lexer &lex, bool verbose = false, CompilationContext* ctx = nullptr);
     std::unique_ptr<ProgramAST> parseProgram();
 
 private:
     Lexer &lex_;
     Token cur_;
     bool verbose_ = false;
+    CompilationContext* ctx_ = nullptr;
     // One-token lookahead buffer
     bool hasPeeked_ = false;
     Token peeked_{};
+    
+    ErrorReporter* errorReporter() const;
+    SourceManager* sourceManager() const;
+    
     void next();
     Token peekToken();
     void expect(TokenKind kind, const std::string &msg);

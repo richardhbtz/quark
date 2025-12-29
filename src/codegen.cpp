@@ -66,36 +66,37 @@ LLD_HAS_DRIVER(elf);
 #endif
 
 CodeGen::CodeGen(bool verbose, bool optimize, int optimizationLevel, bool freestanding,
-                                 std::vector<std::string> additionalLibraries,
-                                 std::vector<std::string> additionalLibraryPaths,
-                                 bool showProgress)
-        : verbose_(verbose),
-            optimize_(optimize),
-            freestanding_(freestanding),
-            showProgress_(showProgress),
-            optimizationLevel_(optimizationLevel),
-            additionalLibraries_(std::move(additionalLibraries)),
-            additionalLibraryPaths_(std::move(additionalLibraryPaths))
+                 std::vector<std::string> additionalLibraries,
+                 std::vector<std::string> additionalLibraryPaths,
+                 bool showProgress,
+                 CompilationContext* compilationCtx)
+    : verbose_(verbose),
+      optimize_(optimize),
+      freestanding_(freestanding),
+      showProgress_(showProgress),
+      optimizationLevel_(optimizationLevel),
+      additionalLibraries_(std::move(additionalLibraries)),
+      additionalLibraryPaths_(std::move(additionalLibraryPaths)),
+      ctx_(compilationCtx)
 {
-    ctx_ = LLVMContextCreate();
-    module_ = LLVMModuleCreateWithNameInContext("parser_module", ctx_);
-    builder_ = LLVMCreateBuilderInContext(ctx_);
-    int32_t_ = LLVMInt32TypeInContext(ctx_);
-    int8ptr_t_ = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
-    float_t_ = LLVMFloatTypeInContext(ctx_);
-    double_t_ = LLVMDoubleTypeInContext(ctx_);
+    llvmCtx_ = LLVMContextCreate();
+    module_ = LLVMModuleCreateWithNameInContext("parser_module", llvmCtx_);
+    builder_ = LLVMCreateBuilderInContext(llvmCtx_);
+    int32_t_ = LLVMInt32TypeInContext(llvmCtx_);
+    int8ptr_t_ = LLVMPointerType(LLVMInt8TypeInContext(llvmCtx_), 0);
+    float_t_ = LLVMFloatTypeInContext(llvmCtx_);
+    double_t_ = LLVMDoubleTypeInContext(llvmCtx_);
 
-    // FILE* type (opaque)
 #ifdef _WIN32
-    fileptr_t_ = LLVMPointerType(LLVMStructCreateNamed(ctx_, "struct._iobuf"), 0);
+    fileptr_t_ = LLVMPointerType(LLVMStructCreateNamed(llvmCtx_, "struct._iobuf"), 0);
 #else
-    fileptr_t_ = LLVMPointerType(LLVMStructCreateNamed(ctx_, "struct._IO_FILE"), 0);
+    fileptr_t_ = LLVMPointerType(LLVMStructCreateNamed(llvmCtx_, "struct._IO_FILE"), 0);
 #endif
-    bool_t_ = LLVMInt1TypeInContext(ctx_);
+    bool_t_ = LLVMInt1TypeInContext(llvmCtx_);
 
-        initializeCodeGenModules();
+    initializeCodeGenModules();
     
-        if (showProgress_) {
+    if (showProgress_) {
         progress_ = std::make_unique<CompilationProgress>(!verbose_);
     }
 }
@@ -106,32 +107,30 @@ CodeGen::~CodeGen()
         LLVMDisposeBuilder(builder_);
     if (module_)
         LLVMDisposeModule(module_);
-    if (ctx_)
-        LLVMContextDispose(ctx_);
+    if (llvmCtx_)
+        LLVMContextDispose(llvmCtx_);
 }
 
 void CodeGen::initializeCodeGenModules()
 {
-    externalFunctions_ = std::make_unique<ExternalFunctions>(ctx_, module_);
-    builtinFunctions_ = std::make_unique<BuiltinFunctions>(ctx_, module_, builder_);
+    externalFunctions_ = std::make_unique<ExternalFunctions>(llvmCtx_, module_);
+    builtinFunctions_ = std::make_unique<BuiltinFunctions>(llvmCtx_, module_, builder_);
 
-        builtinFunctions_->registerAllBuiltins();
+    builtinFunctions_->registerAllBuiltins();
 
-
-    expressionCodeGen_ = std::make_unique<ExpressionCodeGen>(ctx_, module_, builder_,
-                                                             externalFunctions_.get(), verbose_);
+    expressionCodeGen_ = std::make_unique<ExpressionCodeGen>(llvmCtx_, module_, builder_,
+                                                             externalFunctions_.get(), verbose_, ctx_);
     expressionCodeGen_->setBuiltinFunctions(builtinFunctions_.get());
 
-    statementCodeGen_ = std::make_unique<StatementCodeGen>(ctx_, module_, builder_,
+    statementCodeGen_ = std::make_unique<StatementCodeGen>(llvmCtx_, module_, builder_,
                                                            externalFunctions_.get(),
                                                            expressionCodeGen_.get(), verbose_);
 
-        expressionCodeGen_->setGlobalSymbolTables(&g_function_map_, &g_named_values_, &g_const_values_,
+    expressionCodeGen_->setGlobalSymbolTables(&g_function_map_, &g_named_values_, &g_const_values_,
                                               &g_function_param_types_, &g_named_types_, &g_struct_defs_, &g_struct_types_, &g_variadic_functions_);
     statementCodeGen_->setGlobalSymbolTables(&g_function_map_, &g_named_values_, &g_const_values_,
                                              &g_function_param_types_, &g_named_types_, &g_struct_defs_, &g_struct_types_, &g_variadic_functions_);
-
-    }
+}
 
 void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
 {
@@ -147,7 +146,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         // Determine return type
         LLVMTypeRef returnType;
         if (f->returnType == "int")
-            returnType = LLVMInt32TypeInContext(ctx_);
+            returnType = LLVMInt32TypeInContext(llvmCtx_);
         else if (f->returnType == "float")
             returnType = float_t_;
         else if (f->returnType == "double")
@@ -157,7 +156,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         else if (f->returnType == "bool")
             returnType = bool_t_;
         else if (f->returnType == "void")
-            returnType = LLVMVoidTypeInContext(ctx_);
+            returnType = LLVMVoidTypeInContext(llvmCtx_);
         else if (f->returnType.size() > 2 && f->returnType.substr(f->returnType.size() - 2) == "[]")
         {
                         std::string elementType = f->returnType.substr(0, f->returnType.size() - 2);
@@ -167,7 +166,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             }
             else if (elementType == "int")
             {
-                                returnType = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+                                returnType = LLVMPointerType(LLVMInt32TypeInContext(llvmCtx_), 0);
             }
             else if (elementType == "bool")
             {
@@ -239,7 +238,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             }
 
             if (ptype == "int")
-                paramTypes.push_back(LLVMInt32TypeInContext(ctx_));
+                paramTypes.push_back(LLVMInt32TypeInContext(llvmCtx_));
             else if (ptype == "float")
                 paramTypes.push_back(float_t_);
             else if (ptype == "double")
@@ -257,7 +256,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
                 }
                 else if (elementType == "int")
                 {
-                                        paramTypes.push_back(LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0));
+                                        paramTypes.push_back(LLVMPointerType(LLVMInt32TypeInContext(llvmCtx_), 0));
                 }
                 else if (elementType == "bool")
                 {
@@ -340,7 +339,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
 void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool hasTopLevelStmts)
 {
     #ifdef _WIN32
-    LLVMTypeRef uint32Type = LLVMInt32TypeInContext(ctx_);
+    LLVMTypeRef uint32Type = LLVMInt32TypeInContext(llvmCtx_);
     LLVMTypeRef setConsoleOutputCPType = LLVMFunctionType(uint32Type, &uint32Type, 1, 0);
     LLVMValueRef setConsoleOutputCPFn = LLVMAddFunction(module_, "SetConsoleOutputCP", setConsoleOutputCPType);
 
@@ -358,7 +357,7 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
     {
         LLVMTypeRef mainType = LLVMFunctionType(int32_t_, nullptr, 0, 0);
         LLVMValueRef mainFn = LLVMAddFunction(module_, "main", mainType);
-        LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(ctx_, mainFn, "entry");
+        LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(llvmCtx_, mainFn, "entry");
         LLVMPositionBuilderAtEnd(builder_, bb);
 
 #ifdef _WIN32
@@ -380,7 +379,7 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
     {
         LLVMTypeRef mainType = LLVMFunctionType(int32_t_, nullptr, 0, 0);
         LLVMValueRef mainFn = LLVMAddFunction(module_, "main", mainType);
-        LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(ctx_, mainFn, "entry");
+        LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(llvmCtx_, mainFn, "entry");
         LLVMPositionBuilderAtEnd(builder_, bb);
         LLVMBuildRet(builder_, LLVMConstInt(int32_t_, 0, 0));
     }
@@ -1005,7 +1004,7 @@ void CodeGen::runOptimizationPasses()
     if (verbose_)
         printf("[codegen] setting up modern LLVM optimization passes (level O%d)\n", optimizationLevel_);
 
-        llvm::LLVMContext *cppCtx = llvm::unwrap(ctx_);
+        llvm::LLVMContext *cppCtx = llvm::unwrap(llvmCtx_);
     llvm::Module *cppModule = llvm::unwrap(module_);
 
             if (cppModule->getTargetTriple().empty())
