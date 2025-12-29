@@ -121,8 +121,8 @@ total=0
 passed=0
 failed=0
 
-# Find all test files
-test_files=($(find "$TESTS_DIR" -name "*.k" -type f | sort))
+# Find all test files (only in the top-level tests directory)
+test_files=($(find "$TESTS_DIR" -maxdepth 1 -name "*.k" -type f | sort))
 
 for test_file in "${test_files[@]}"; do
     ((total++))

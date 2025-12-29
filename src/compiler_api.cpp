@@ -5,6 +5,7 @@
 #include "../include/error_reporter.h"
 #include "../include/lexer.h"
 #include "../include/parser.h"
+#include "../include/semantic_analyzer.h"
 #include "../include/source_manager.h"
 
 #include <filesystem>
@@ -178,6 +179,18 @@ static int compileInternal(QuarkCompilerHandle* handle,
         }
         Parser parser(lexer, verbose);
         auto ast = parser.parseProgram();
+
+        if (!showProgress) {
+            g_cli.updateSpinner("Semantic analysis - type checking");
+        }
+        SemanticAnalyzer semanticAnalyzer(*g_errorReporter, *g_sourceManager, logicalName, verbose);
+        if (!semanticAnalyzer.analyze(ast.get())) {
+            g_cli.stopSpinner(false);
+            g_errorReporter->printSummary();
+            handle->impl.lastErrorCount = g_errorReporter->errorCount_;
+            handle->impl.lastWarningCount = g_errorReporter->warningCount_;
+            return QUARK_COMPILE_ERR_COMPILATION;
+        }
 
         if (!showProgress) {
             g_cli.updateSpinner("Code generation - emitting LLVM IR");
