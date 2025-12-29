@@ -376,6 +376,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                         std::unique_ptr<StmtAST> initStmt;
         if (cur_.kind != tok_semicolon && cur_.kind != tok_paren_close) {
             if (cur_.kind == tok_var) {
+                SourceLocation forVarLoc = cur_.location; // Save location of 'var'
                 next();
                 if (cur_.kind != tok_identifier)
                     throw ParseError("expected variable name after 'var' in for(...)", cur_.location);
@@ -413,9 +414,12 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 auto initExpr = parseExpression();
                 if (cur_.kind != tok_semicolon) throw ParseError("expected ';' after for-init", cur_.location);
                 next();
-                initStmt = std::make_unique<VarDeclStmt>(varType, loopVar, std::move(initExpr));
+                auto varDeclStmt = std::make_unique<VarDeclStmt>(varType, loopVar, std::move(initExpr));
+                varDeclStmt->location = forVarLoc;
+                initStmt = std::move(varDeclStmt);
             } else if (isTypeToken(cur_) || (cur_.kind == tok_identifier && peekToken().kind == tok_identifier)) {
-                                std::string maybeType = parseTypeString();
+                                SourceLocation forTypeLoc = cur_.location; // Save location of type
+                std::string maybeType = parseTypeString();
                 if (cur_.kind == tok_identifier) {
                     std::string loopVar = cur_.text; next();
                     if (cur_.kind == tok_in) {
@@ -443,7 +447,9 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                     auto initExpr = parseExpression();
                     if (cur_.kind != tok_semicolon) throw ParseError("expected ';' after for-init", cur_.location);
                     next();
-                    initStmt = std::make_unique<VarDeclStmt>(maybeType, loopVar, std::move(initExpr));
+                    auto varDeclStmt = std::make_unique<VarDeclStmt>(maybeType, loopVar, std::move(initExpr));
+                    varDeclStmt->location = forTypeLoc;
+                    initStmt = std::move(varDeclStmt);
                 } else {
                     throw ParseError("expected variable name after type in for-init", cur_.location);
                 }
@@ -530,6 +536,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
 
             if (isTypeToken(cur_) || (cur_.kind == tok_identifier && cur_.text != "for" && peekToken().kind == tok_identifier))
     {
+        SourceLocation typeDeclLoc = cur_.location; // Save location of type
         if (verbose_) printf("[parser] type-first branch: cur kind=%d text='%s' next kind=%d text='%s'\n",
             (int)cur_.kind, cur_.text.c_str(), (int)peekToken().kind, peekToken().text.c_str());
         std::string typeOrReturn = parseTypeString();
@@ -623,7 +630,9 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         next();
         if (verbose_)
             printf("[parser] parsed typed variable declaration: %s %s\n", typeOrReturn.c_str(), name.c_str());
-        return std::make_unique<VarDeclStmt>(typeOrReturn, name, std::move(initExpr));
+        auto stmt = std::make_unique<VarDeclStmt>(typeOrReturn, name, std::move(initExpr));
+        stmt->location = typeDeclLoc; // Set the location of the VarDeclStmt
+        return stmt;
     }
 
     // If/elif/else statement
@@ -696,10 +705,12 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     
         if (cur_.kind == tok_var)
     {
+        SourceLocation varDeclLoc = cur_.location; // Save location of 'var' keyword
         next();
         if (cur_.kind != tok_identifier)
             throw ParseError("expected variable name after 'var'", cur_.location);
         auto varName = cur_.text;
+        SourceLocation varNameLoc = cur_.location; // Save location of variable name
         next();
         
         std::string varType = "auto"; // default to auto/inferred
@@ -740,7 +751,9 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         next();
         if (verbose_)
             printf("[parser] parsed dynamic variable declaration: %s\n", varName.c_str());
-        return std::make_unique<VarDeclStmt>(varType, varName, std::move(initExpr));
+        auto stmt = std::make_unique<VarDeclStmt>(varType, varName, std::move(initExpr));
+        stmt->location = varDeclLoc; // Set the location of the VarDeclStmt
+        return stmt;
     }
 
     

@@ -126,7 +126,7 @@ void CodeGen::initializeCodeGenModules()
 
     statementCodeGen_ = std::make_unique<StatementCodeGen>(llvmCtx_, module_, builder_,
                                                            externalFunctions_.get(),
-                                                           expressionCodeGen_.get(), verbose_);
+                                                           expressionCodeGen_.get(), verbose_, ctx_);
 
     expressionCodeGen_->setGlobalSymbolTables(&g_function_map_, &g_named_values_, &g_const_values_,
                                               &g_function_param_types_, &g_named_types_, &g_struct_defs_, &g_struct_types_, &g_variadic_functions_);

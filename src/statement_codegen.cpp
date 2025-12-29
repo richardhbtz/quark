@@ -1,4 +1,7 @@
 #include "../include/statement_codegen.h"
+#include "../include/compilation_context.h"
+#include "../include/error_reporter.h"
+#include "../include/source_manager.h"
 #include <stdexcept>
 #include <cstdio>
 #include <vector>
@@ -8,9 +11,9 @@
 
 StatementCodeGen::StatementCodeGen(LLVMContextRef ctx, LLVMModuleRef module, LLVMBuilderRef builder,
                                    ExternalFunctions* externalFunctions, ExpressionCodeGen* expressionCodeGen,
-                                   bool verbose)
+                                   bool verbose, CompilationContext* compilationCtx)
     : ctx_(ctx), module_(module), builder_(builder), externalFunctions_(externalFunctions),
-      expressionCodeGen_(expressionCodeGen), verbose_(verbose)
+      expressionCodeGen_(expressionCodeGen), verbose_(verbose), ctx_compilation_(compilationCtx)
 {
     int32_t_ = LLVMInt32TypeInContext(ctx_);
     int8ptr_t_ = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
@@ -23,6 +26,16 @@ StatementCodeGen::StatementCodeGen(LLVMContextRef ctx, LLVMModuleRef module, LLV
     g_const_values_ = nullptr;
     g_function_param_types_ = nullptr;
     g_named_types_ = nullptr;
+}
+
+ErrorReporter* StatementCodeGen::errorReporter() const {
+    if (ctx_compilation_) return &ctx_compilation_->errorReporter;
+    return g_errorReporter.get();
+}
+
+SourceManager* StatementCodeGen::sourceManager() const {
+    if (ctx_compilation_) return &ctx_compilation_->sourceManager;
+    return g_sourceManager.get();
 }
 
 void StatementCodeGen::setGlobalSymbolTables(std::unordered_map<std::string, LLVMValueRef>* functionMap,
@@ -506,12 +519,28 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
     if (verbose_)
         printf("[codegen] processing variable declaration: %s %s\n", vdecl->type.c_str(), vdecl->name.c_str());
     
+    // Helper to throw enhanced errors with proper location
+    auto throwError = [this, vdecl](const std::string& msg, const SourceLocation& loc, const std::string& errorCode, int length = 1) {
+        auto* sm = sourceManager();
+        if (sm) {
+            auto file = sm->getFile(loc.filename);
+            if (file) {
+                throw EnhancedCodeGenError(msg, loc, file->content, errorCode, length);
+            }
+        }
+        throw std::runtime_error(msg);
+    };
+
         TypeInfo initType;
     try {
         initType = expressionCodeGen_->inferType(vdecl->init.get());
+    } catch (const EnhancedCodeGenError&) {
+        throw; // Re-throw enhanced errors as-is
     } catch (const std::exception& e) {
-        throw std::runtime_error("Failed to infer type for variable '" + vdecl->name + 
-                                "' initializer: " + std::string(e.what()));
+        throwError("Failed to infer type for variable '" + vdecl->name + 
+                   "' initializer: " + std::string(e.what()), 
+                   vdecl->init ? vdecl->init->location : vdecl->location,
+                   ErrorCodes::INVALID_TYPE, (int)vdecl->name.size());
     }
     
         QuarkType declaredType;
@@ -535,7 +564,8 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             if (g_struct_defs_ && g_struct_defs_->find(vdecl->type) != g_struct_defs_->end()) {
                 declaredType = QuarkType::Struct;
             } else {
-                throw std::runtime_error("Unknown type '" + vdecl->type + "' in variable declaration");
+                throwError("Unknown type '" + vdecl->type + "' in variable declaration", 
+                          vdecl->location, ErrorCodes::INVALID_TYPE, (int)vdecl->type.size());
             }
         }
     }
@@ -555,9 +585,9 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
                 };
                 std::string declaredStr = (declaredType == QuarkType::Struct) ? ("struct " + vdecl->type) : typeToStr(declaredType);
                 std::string actualStr = (initType.type == QuarkType::Struct) ? ("struct " + initType.structName) : typeToStr(initType.type);
-                throw std::runtime_error("Type mismatch in declaration of '" + vdecl->name + 
-                                       "': declared as " + declaredStr + " but initialized with " + actualStr +
-                                       " at line " + std::to_string(vdecl->init->location.line));
+                throwError("Type mismatch in declaration of '" + vdecl->name + 
+                          "': declared as " + declaredStr + " but initialized with " + actualStr,
+                          vdecl->init->location, ErrorCodes::TYPE_MISMATCH, (int)vdecl->name.size());
             }
         }
     }
@@ -613,7 +643,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             }
             break;
         case QuarkType::Void:
-            throw std::runtime_error("Variables cannot have type void");
+            throwError("Variables cannot have type void", vdecl->location, ErrorCodes::INVALID_TYPE, 4);
         case QuarkType::Struct:
                         if (vdecl->type == "auto") {
                 actualType = initType.structName;
@@ -626,10 +656,10 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
                     varType = structTypeIt->second;
                     val = expressionCodeGen_->genExpr(vdecl->init.get());
                 } else {
-                    throw std::runtime_error("Struct type not found: " + actualType);
+                    throwError("Struct type not found: " + actualType, vdecl->location, ErrorCodes::SYMBOL_NOT_FOUND, (int)actualType.size());
                 }
             } else {
-                throw std::runtime_error("Struct types not initialized");
+                throwError("Struct types not initialized", vdecl->location, ErrorCodes::CODEGEN_FAILED, 1);
             }
             break;
         case QuarkType::Pointer: {
@@ -651,7 +681,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             val = expressionCodeGen_->genExpr(vdecl->init.get());
             break;
         default:
-            throw std::runtime_error("Unsupported variable type for " + vdecl->name);
+            throwError("Unsupported variable type for " + vdecl->name, vdecl->location, ErrorCodes::INVALID_TYPE, (int)vdecl->name.size());
     }
     
         LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder_);

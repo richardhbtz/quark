@@ -3,18 +3,26 @@
 #include "codegen_types.h"
 #include "external_functions.h"
 #include "expression_codegen.h"
+#include "error_reporter.h"
+#include "source_manager.h"
 #include <llvm-c/Core.h>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+class CompilationContext;
 
 class StatementCodeGen
 {
 public:
     StatementCodeGen(LLVMContextRef ctx, LLVMModuleRef module, LLVMBuilderRef builder,
                      ExternalFunctions* externalFunctions, ExpressionCodeGen* expressionCodeGen, 
-                     bool verbose = false);
+                     bool verbose = false, CompilationContext* compilationCtx = nullptr);
     ~StatementCodeGen() = default;
+    
+    // Error reporting helpers
+    ErrorReporter* errorReporter() const;
+    SourceManager* sourceManager() const;
     
     // Statement generation methods
     void genStmt(StmtAST *stmt, LLVMValueRef putsFn);
@@ -43,6 +51,7 @@ private:
     ExternalFunctions* externalFunctions_;
     ExpressionCodeGen* expressionCodeGen_;
     bool verbose_;
+    CompilationContext* ctx_compilation_;
     
     // LLVM types
     LLVMTypeRef int32_t_;
