@@ -1,0 +1,29 @@
+[build]
+emit_assembly = false
+emit_llvm = false
+freestanding = false
+output_name = 'package'
+source_files = [ 'src/main.k' ]
+target = 'executable'
+
+[dependencies]
+
+[dev-dependencies]
+
+[package]
+description = 'A Quark project'
+license = 'MIT'
+name = 'package'
+version = '0.1.0'
+
+[profile.dev.optimization]
+debug_info = false
+enabled = false
+level = 0
+lto = false
+
+[profile.release.optimization]
+debug_info = false
+enabled = true
+level = 3
+lto = true

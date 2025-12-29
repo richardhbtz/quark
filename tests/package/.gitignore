@@ -1,0 +1,3 @@
+# Quark build artifacts
+build/
+*.exe
