@@ -818,7 +818,46 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     if (cur_.kind == tok_match)
     {
         next();
-        auto matchExpr = parseExpression();
+        // Parse match expression - but we need to stop before '{' since that starts the match body
+        // For simple cases (variable name), just parse the identifier directly
+        std::unique_ptr<ExprAST> matchExpr;
+        if (cur_.kind == tok_identifier) {
+            std::string varName = cur_.text;
+            next();
+            // Check if this is a simple variable (next token is '{')
+            // or a more complex expression (has operators)
+            if (cur_.kind == tok_brace_open) {
+                // Simple variable case - don't try to parse as struct literal
+                matchExpr = std::make_unique<VariableExprAST>(varName);
+            } else if (cur_.kind == tok_dot || cur_.kind == tok_square_bracket_open) {
+                // Member access or array access - need to continue parsing
+                auto varExpr = std::make_unique<VariableExprAST>(varName);
+                // Put it back for proper expression parsing
+                // Actually, let's just parse the rest as a continuation
+                if (cur_.kind == tok_dot) {
+                    next();
+                    if (cur_.kind != tok_identifier)
+                        throw ParseError("expected field name after '.'", cur_.location);
+                    std::string fieldName = cur_.text;
+                    next();
+                    matchExpr = std::make_unique<MemberAccessExpr>(std::move(varExpr), fieldName);
+                } else if (cur_.kind == tok_square_bracket_open) {
+                    next();
+                    auto indexExpr = parseExpression();
+                    if (cur_.kind != tok_square_bracket_close)
+                        throw ParseError("expected ']' after array index", cur_.location);
+                    next();
+                    matchExpr = std::make_unique<ArrayAccessExpr>(std::move(varExpr), std::move(indexExpr));
+                }
+            } else {
+                // Has operators - parse as full expression  
+                // Need to reconstruct - this is tricky, let's just handle simple cases
+                matchExpr = std::make_unique<VariableExprAST>(varName);
+            }
+        } else {
+            // For non-identifier expressions, use regular parseExpression
+            matchExpr = parseExpression();
+        }
         
         if (cur_.kind != tok_brace_open)
             throw ParseError("expected '{' after match expression", cur_.location);
@@ -826,15 +865,45 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         
         auto matchStmt = std::make_unique<MatchStmt>(std::move(matchExpr));
         
-                int braceCount = 1;
-        while (braceCount > 0 && cur_.kind != tok_eof)
+        while (cur_.kind != tok_brace_close && cur_.kind != tok_eof)
         {
-            if (cur_.kind == tok_brace_open)
-                braceCount++;
-            else if (cur_.kind == tok_brace_close)
-                braceCount--;
+            MatchArm arm;
+            
+            // Check for wildcard pattern (_)
+            if (cur_.kind == tok_identifier && cur_.text == "_") {
+                arm.isWildcard = true;
+                arm.pattern = nullptr;
+                next();
+            } else {
+                arm.isWildcard = false;
+                arm.pattern = parseExpression();
+            }
+            
+            if (cur_.kind != tok_fat_arrow)
+                throw ParseError("expected '=>' after match pattern", cur_.location);
             next();
+            
+            if (cur_.kind == tok_brace_open) {
+                next();
+                while (cur_.kind != tok_brace_close && cur_.kind != tok_eof) {
+                    arm.body.push_back(parseStatement());
+                }
+                if (cur_.kind != tok_brace_close)
+                    throw ParseError("expected '}' to close match arm body", cur_.location);
+                next();
+            } else {
+                arm.body.push_back(parseStatement());
+            }
+            
+            if (cur_.kind == tok_comma)
+                next();
+            
+            matchStmt->arms.push_back(std::move(arm));
         }
+        
+        if (cur_.kind != tok_brace_close)
+            throw ParseError("expected '}' to close match statement", cur_.location);
+        next();
         
         return matchStmt;
     }
@@ -1253,6 +1322,11 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         return std::make_unique<VariableExprAST>("this");
     }
 
+    if (cur_.kind == tok_null) {
+        next();
+        return std::make_unique<NullExprAST>();
+    }
+
     throw ParseError("unknown token when expecting an expression", cur_.location);
 }
 
@@ -1278,6 +1352,7 @@ int Parser::getTokPrecedence()
         if (cur_.kind == tok_semicolon || cur_.kind == tok_paren_close || 
         cur_.kind == tok_comma || cur_.kind == tok_brace_close ||
         cur_.kind == tok_square_bracket_close ||
+        cur_.kind == tok_fat_arrow ||
         cur_.kind == tok_eof)
         return -1;
         

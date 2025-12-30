@@ -680,6 +680,11 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             }
             val = expressionCodeGen_->genExpr(vdecl->init.get());
             break;
+        case QuarkType::Null:
+            // Null literal - treat as void pointer (i8*)
+            varType = int8ptr_t_;
+            val = expressionCodeGen_->genExpr(vdecl->init.get());
+            break;
         default:
             throwError("Unsupported variable type for " + vdecl->name, vdecl->location, ErrorCodes::INVALID_TYPE, (int)vdecl->name.size());
     }
@@ -817,6 +822,9 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
     } else if (declaredType == QuarkType::Pointer) {
         std::string pointerTypeName = (vdecl->type == "auto") ? initType.pointerTypeName : vdecl->type;
         expressionCodeGen_->declareVariable(vdecl->name, declaredType, vdecl->init->location, "", pointerTypeName);
+    } else if (declaredType == QuarkType::Null) {
+        // Null is treated as a pointer type (void*)
+        expressionCodeGen_->declareVariable(vdecl->name, QuarkType::Pointer, vdecl->init->location, "", "void*");
     } else {
         expressionCodeGen_->declareVariable(vdecl->name, declaredType, vdecl->init->location);
     }
@@ -2033,18 +2041,110 @@ void StatementCodeGen::genDerefAssignStmt(DerefAssignStmt* derefAssign)
 void StatementCodeGen::genMatchStmt(MatchStmt* matchStmt)
 {
     if (verbose_)
-        printf("[codegen] generating match statement (stub)\n");
+        printf("[codegen] generating match statement\n");
     
-            if (matchStmt->expr) {
-        LLVMValueRef matchValue = expressionCodeGen_->genExpr(matchStmt->expr.get());
-        (void)matchValue;     }
-    
-        for (auto& pattern : matchStmt->patterns) {
-        genStmt(pattern.get(), nullptr);
+    if (!matchStmt->expr) {
+        throw std::runtime_error("match statement requires an expression to match");
     }
     
+    // Get the value to match
+    LLVMValueRef matchValue = expressionCodeGen_->genExpr(matchStmt->expr.get());
+    TypeInfo matchType = expressionCodeGen_->inferType(matchStmt->expr.get());
+    
+    // Get current function for creating basic blocks
+    LLVMValueRef currentFn = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
+    if (!currentFn) {
+        throw std::runtime_error("match statement generated outside function context");
+    }
+    
+    // Create merge block for after the match
+    LLVMBasicBlockRef mergeBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "match_merge");
+    
+    // Find the wildcard arm (if any) - it should be handled last
+    int wildcardIndex = -1;
+    for (size_t i = 0; i < matchStmt->arms.size(); ++i) {
+        if (matchStmt->arms[i].isWildcard) {
+            wildcardIndex = static_cast<int>(i);
+            break;
+        }
+    }
+    
+    // Generate code for each arm
+    std::vector<LLVMBasicBlockRef> armBlocks;
+    std::vector<LLVMBasicBlockRef> nextCheckBlocks;
+    
+    for (size_t i = 0; i < matchStmt->arms.size(); ++i) {
+        armBlocks.push_back(LLVMAppendBasicBlockInContext(ctx_, currentFn, ("match_arm_" + std::to_string(i)).c_str()));
+        if (i < matchStmt->arms.size() - 1) {
+            nextCheckBlocks.push_back(LLVMAppendBasicBlockInContext(ctx_, currentFn, ("match_check_" + std::to_string(i + 1)).c_str()));
+        }
+    }
+    
+    // Generate condition checks and branches
+    for (size_t i = 0; i < matchStmt->arms.size(); ++i) {
+        const MatchArm& arm = matchStmt->arms[i];
+        
+        if (arm.isWildcard) {
+            // Wildcard matches everything - just branch to the arm
+            LLVMBuildBr(builder_, armBlocks[i]);
+        } else {
+            // Generate comparison
+            LLVMValueRef patternValue = expressionCodeGen_->genExpr(arm.pattern.get());
+            LLVMValueRef cond = nullptr;
+            
+            // Generate appropriate comparison based on type
+            if (matchType.type == QuarkType::Int || matchType.type == QuarkType::Boolean) {
+                cond = LLVMBuildICmp(builder_, LLVMIntEQ, matchValue, patternValue, "match_cmp");
+            } else if (matchType.type == QuarkType::Float || matchType.type == QuarkType::Double) {
+                cond = LLVMBuildFCmp(builder_, LLVMRealOEQ, matchValue, patternValue, "match_cmp");
+            } else if (matchType.type == QuarkType::String) {
+                // For strings, call strcmp
+                LLVMValueRef strcmpFn = LLVMGetNamedFunction(module_, "strcmp");
+                if (!strcmpFn) {
+                    LLVMTypeRef args[] = {int8ptr_t_, int8ptr_t_};
+                    LLVMTypeRef fnType = LLVMFunctionType(int32_t_, args, 2, 0);
+                    strcmpFn = LLVMAddFunction(module_, "strcmp", fnType);
+                }
+                LLVMValueRef strcmpArgs[] = {matchValue, patternValue};
+                LLVMValueRef result = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(strcmpFn), strcmpFn, strcmpArgs, 2, "strcmp_result");
+                cond = LLVMBuildICmp(builder_, LLVMIntEQ, result, LLVMConstInt(int32_t_, 0, 0), "match_cmp");
+            } else if (matchType.type == QuarkType::Pointer || matchType.type == QuarkType::Null) {
+                // Pointer comparison
+                cond = LLVMBuildICmp(builder_, LLVMIntEQ, 
+                    LLVMBuildPtrToInt(builder_, matchValue, LLVMInt64TypeInContext(ctx_), "ptr_to_int1"),
+                    LLVMBuildPtrToInt(builder_, patternValue, LLVMInt64TypeInContext(ctx_), "ptr_to_int2"),
+                    "match_cmp");
+            } else {
+                // Default to integer comparison
+                cond = LLVMBuildICmp(builder_, LLVMIntEQ, matchValue, patternValue, "match_cmp");
+            }
+            
+            // Branch based on comparison
+            LLVMBasicBlockRef nextBlock = (i < matchStmt->arms.size() - 1) ? nextCheckBlocks[i] : mergeBB;
+            LLVMBuildCondBr(builder_, cond, armBlocks[i], nextBlock);
+        }
+        
+        // Generate arm body
+        LLVMPositionBuilderAtEnd(builder_, armBlocks[i]);
+        for (auto& stmt : arm.body) {
+            genStmt(stmt.get(), nullptr);
+        }
+        // Branch to merge if not terminated
+        if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder_))) {
+            LLVMBuildBr(builder_, mergeBB);
+        }
+        
+        // Position at next check block for next iteration (if not last and not wildcard)
+        if (i < matchStmt->arms.size() - 1 && !arm.isWildcard) {
+            LLVMPositionBuilderAtEnd(builder_, nextCheckBlocks[i]);
+        }
+    }
+    
+    // Position at merge block for subsequent code
+    LLVMPositionBuilderAtEnd(builder_, mergeBB);
+    
     if (verbose_)
-        printf("[codegen] completed match statement (stub)\n");
+        printf("[codegen] completed match statement\n");
 }
 
 void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt* arrayAssign)

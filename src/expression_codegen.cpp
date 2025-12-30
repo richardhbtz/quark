@@ -236,6 +236,10 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
     if (auto *b = dynamic_cast<BoolExprAST *>(expr))
         return TypeInfo(QuarkType::Boolean, expr->location);
     
+    // Handle null literal
+    if (dynamic_cast<NullExprAST *>(expr))
+        return TypeInfo(QuarkType::Null, expr->location);
+    
         if (auto *addrOf = dynamic_cast<AddressOfExpr *>(expr)) {
         auto trimWhitespace = [](std::string &s) {
             while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
@@ -1060,6 +1064,10 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
     
     if (auto *b = dynamic_cast<BoolExprAST *>(expr)) {
         return LLVMConstInt(bool_t_, b->value ? 1 : 0, 0);
+    }
+    // Handle null literal - return null pointer (void*)
+    if (dynamic_cast<NullExprAST *>(expr)) {
+        return LLVMConstPointerNull(int8ptr_t_);
     }
     if (auto *s = dynamic_cast<StringExprAST *>(expr))
     {
@@ -2473,6 +2481,22 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                     isStringComparison = true;
                 if (lhsType.type == QuarkType::Boolean && rhsType.type == QuarkType::Boolean)
                     isBooleanComparison = true;
+                // Handle pointer/null comparisons
+                if ((lhsType.type == QuarkType::Pointer || lhsType.type == QuarkType::Null) &&
+                    (rhsType.type == QuarkType::Pointer || rhsType.type == QuarkType::Null)) {
+                    // Pointer comparison - use genExpr and compare pointers directly
+                    LLVMValueRef L = genExpr(b->lhs.get());
+                    LLVMValueRef R = genExpr(b->rhs.get());
+                    // Convert pointers to integers for comparison
+                    LLVMTypeRef intptrType = LLVMInt64TypeInContext(ctx_);
+                    LLVMValueRef Lint = LLVMBuildPtrToInt(builder_, L, intptrType, "ptr_to_int_l");
+                    LLVMValueRef Rint = LLVMBuildPtrToInt(builder_, R, intptrType, "ptr_to_int_r");
+                    switch (b->op) {
+                        case '=': return LLVMBuildICmp(builder_, LLVMIntEQ, Lint, Rint, "eqptr");
+                        case 'n': return LLVMBuildICmp(builder_, LLVMIntNE, Lint, Rint, "neptr");
+                        default: throw std::runtime_error("unsupported pointer comparison operator");
+                    }
+                }
             } catch (...) {
                             }
 

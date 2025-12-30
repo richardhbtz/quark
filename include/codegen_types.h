@@ -13,7 +13,8 @@ enum class QuarkType {
     Void,
     Struct,
     Pointer,    // Pointer to other types
-    Array       // Array of other types
+    Array,      // Array of other types
+    Null        // Null literal type
 };
 
 struct TypeInfo {

@@ -65,7 +65,10 @@ enum TokenKind
     tok_minus_eq, // -=
     tok_mul_eq,   // *=
     tok_div_eq,   // /=
-    tok_mod_eq    // %=
+    tok_mod_eq,   // %=
+    tok_null,     // null
+    tok_fat_arrow, // =>
+    tok_underscore // _ (wildcard)
 };
 
 struct SourceLocation

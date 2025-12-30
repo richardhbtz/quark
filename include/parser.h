@@ -262,11 +262,23 @@ struct DerefAssignStmt : StmtAST {
         : deref(std::move(derefExpr)), value(std::move(val)) {}
 };
 
-// Match statement: match expr { patterns... }
+// Match arm: pattern => body
+struct MatchArm {
+    std::unique_ptr<ExprAST> pattern; // nullptr for wildcard (_)
+    bool isWildcard = false;
+    std::vector<std::unique_ptr<StmtAST>> body;
+};
+
+// Match statement: match expr { pattern => { body }, ... }
 struct MatchStmt : StmtAST {
     std::unique_ptr<ExprAST> expr;
-    std::vector<std::unique_ptr<StmtAST>> patterns; // For now, treat patterns as statements
+    std::vector<MatchArm> arms;
     MatchStmt(std::unique_ptr<ExprAST> matchExpr) : expr(std::move(matchExpr)) {}
+};
+
+// Null literal expression
+struct NullExprAST : ExprAST {
+    NullExprAST() = default;
 };
 
 // Array literal expression: {1, 2, 3, 4}

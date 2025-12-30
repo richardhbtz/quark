@@ -157,6 +157,7 @@ Token Lexer::next()
         else if (s == "match") tok.kind = tok_match;
         else if (s == "break") tok.kind = tok_break;
         else if (s == "continue") tok.kind = tok_continue;
+        else if (s == "null") tok.kind = tok_null;
         else {
             tok.kind = tok_identifier;
             if (verbose_)
@@ -341,6 +342,16 @@ Token Lexer::next()
         Token tok{ tok_or, 0.0, "||" };
         tok.location = tokenStart;
         if (verbose_) printf("[lexer] || at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    if (c == '=' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '>') {
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_fat_arrow, 0.0, "=>" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] => at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
         if (c == '=' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {
