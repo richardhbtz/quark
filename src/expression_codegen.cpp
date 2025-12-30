@@ -3457,7 +3457,11 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
                                         auto genCallForStruct = [&](const std::string &targetStruct) {
                         std::string targetName = targetStruct + "::" + methodCall->methodName;
                         auto fit = g_function_map_->find(targetName);
-                        if (fit == g_function_map_->end()) return; // skip if not found
+                        if (fit == g_function_map_->end()) {
+                            // Function not found - still need to terminate basic block
+                            LLVMBuildBr(builder_, mergeBB);
+                            return;
+                        }
                         LLVMValueRef callee = fit->second;
                         LLVMTypeRef calleeTy = LLVMGlobalGetValueType(callee);
                                                 unsigned pc = LLVMCountParamTypes(calleeTy);

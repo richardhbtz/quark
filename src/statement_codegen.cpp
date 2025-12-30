@@ -1180,7 +1180,7 @@ void StatementCodeGen::genIfStmt(IfStmtAST* ifstmt, LLVMValueRef putsFn)
         LLVMPositionBuilderAtEnd(builder_, elifThenBB);
         for (size_t i = 0; i < firstElif.second.size(); ++i)
             genStmt(firstElif.second[i].get(), putsFn);
-        if (!LLVMGetBasicBlockTerminator(elifThenBB)) LLVMBuildBr(builder_, contBB);
+        if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder_))) LLVMBuildBr(builder_, contBB);
         LLVMPositionBuilderAtEnd(builder_, elifElseBB);
         emittedElse = true;
     }
