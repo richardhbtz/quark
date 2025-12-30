@@ -373,6 +373,16 @@ Token Lexer::next()
         if (verbose_) printf("[lexer] -> at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
+    if (c == '-' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_minus_eq, 0.0, "-=" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] -= at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
     if (c == '<' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {
         advancePosition(c);
         ++idx_;
@@ -475,10 +485,17 @@ Token Lexer::next()
             printf("[lexer] ) at %d:%d\n", tokenStart.line, tokenStart.column);
         break;
     case '+':
-        tok.kind = tok_plus;
-        tok.text = "+";
-        if (verbose_)
-            printf("[lexer] + at %d:%d\n", tokenStart.line, tokenStart.column);
+        if (idx_ < src_.size() && src_[idx_] == '=') {
+            advancePosition(src_[idx_]);
+            ++idx_;
+            tok.kind = tok_plus_eq;
+            tok.text = "+=";
+            if (verbose_) printf("[lexer] += at %d:%d\n", tokenStart.line, tokenStart.column);
+        } else {
+            tok.kind = tok_plus;
+            tok.text = "+";
+            if (verbose_) printf("[lexer] + at %d:%d\n", tokenStart.line, tokenStart.column);
+        }
         break;
     case '-':
         tok.kind = tok_minus;
@@ -487,22 +504,43 @@ Token Lexer::next()
             printf("[lexer] - at %d:%d\n", tokenStart.line, tokenStart.column);
         break;
     case '*':
-        tok.kind = tok_mul;
-        tok.text = "*";
-        if (verbose_)
-            printf("[lexer] * at %d:%d\n", tokenStart.line, tokenStart.column);
+        if (idx_ < src_.size() && src_[idx_] == '=') {
+            advancePosition(src_[idx_]);
+            ++idx_;
+            tok.kind = tok_mul_eq;
+            tok.text = "*=";
+            if (verbose_) printf("[lexer] *= at %d:%d\n", tokenStart.line, tokenStart.column);
+        } else {
+            tok.kind = tok_mul;
+            tok.text = "*";
+            if (verbose_) printf("[lexer] * at %d:%d\n", tokenStart.line, tokenStart.column);
+        }
         break;
     case '/':
-        tok.kind = tok_div;
-        tok.text = "/";
-        if (verbose_)
-            printf("[lexer] / at %d:%d\n", tokenStart.line, tokenStart.column);
+        if (idx_ < src_.size() && src_[idx_] == '=') {
+            advancePosition(src_[idx_]);
+            ++idx_;
+            tok.kind = tok_div_eq;
+            tok.text = "/=";
+            if (verbose_) printf("[lexer] /= at %d:%d\n", tokenStart.line, tokenStart.column);
+        } else {
+            tok.kind = tok_div;
+            tok.text = "/";
+            if (verbose_) printf("[lexer] / at %d:%d\n", tokenStart.line, tokenStart.column);
+        }
         break;
     case '%':
-        tok.kind = tok_mod;
-        tok.text = "%";
-        if (verbose_)
-            printf("[lexer] %% at %d:%d\n", tokenStart.line, tokenStart.column);
+        if (idx_ < src_.size() && src_[idx_] == '=') {
+            advancePosition(src_[idx_]);
+            ++idx_;
+            tok.kind = tok_mod_eq;
+            tok.text = "%=";
+            if (verbose_) printf("[lexer] %%= at %d:%d\n", tokenStart.line, tokenStart.column);
+        } else {
+            tok.kind = tok_mod;
+            tok.text = "%";
+            if (verbose_) printf("[lexer] %% at %d:%d\n", tokenStart.line, tokenStart.column);
+        }
         break;
     case '.':
         tok.kind = tok_dot;

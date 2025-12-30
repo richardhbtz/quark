@@ -60,7 +60,12 @@ enum TokenKind
     tok_square_bracket_open,  // [
     tok_square_bracket_close, // ]
     tok_break,   // break
-    tok_continue // continue
+    tok_continue, // continue
+    tok_plus_eq,  // +=
+    tok_minus_eq, // -=
+    tok_mul_eq,   // *=
+    tok_div_eq,   // /=
+    tok_mod_eq    // %=
 };
 
 struct SourceLocation

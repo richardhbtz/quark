@@ -875,10 +875,39 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     {
         auto expr = parseExpression();
         
-        if (cur_.kind == tok_equal)
+        char compoundOp = 0;
+        if (cur_.kind == tok_plus_eq) compoundOp = '+';
+        else if (cur_.kind == tok_minus_eq) compoundOp = '-';
+        else if (cur_.kind == tok_mul_eq) compoundOp = '*';
+        else if (cur_.kind == tok_div_eq) compoundOp = '/';
+        else if (cur_.kind == tok_mod_eq) compoundOp = '%';
+        
+        if (cur_.kind == tok_equal || compoundOp != 0)
         {
             next();
-            auto value = parseExpression();
+            auto rhs = parseExpression();
+            
+            std::unique_ptr<ExprAST> value;
+            if (compoundOp != 0) {
+                std::unique_ptr<ExprAST> lhsCopy;
+                if (auto varExpr = dynamic_cast<VariableExprAST*>(expr.get())) {
+                    lhsCopy = std::make_unique<VariableExprAST>(varExpr->name);
+                } else if (auto memberAccess = dynamic_cast<MemberAccessExpr*>(expr.get())) {
+                    auto objCopy = std::make_unique<VariableExprAST>(
+                        dynamic_cast<VariableExprAST*>(memberAccess->object.get())->name);
+                    lhsCopy = std::make_unique<MemberAccessExpr>(std::move(objCopy), memberAccess->fieldName);
+                } else if (auto arrayAccess = dynamic_cast<ArrayAccessExpr*>(expr.get())) {
+                    auto arrCopy = std::make_unique<VariableExprAST>(
+                        dynamic_cast<VariableExprAST*>(arrayAccess->array.get())->name);
+                    auto idxCopy = std::make_unique<NumberExprAST>(
+                        dynamic_cast<NumberExprAST*>(arrayAccess->index.get())->value);
+                    lhsCopy = std::make_unique<ArrayAccessExpr>(std::move(arrCopy), std::move(idxCopy));
+                }
+                value = std::make_unique<BinaryExprAST>(compoundOp, std::move(lhsCopy), std::move(rhs));
+            } else {
+                value = std::move(rhs);
+            }
+            
             if (cur_.kind != tok_semicolon) {
                 auto* er = errorReporter();
                 auto* sm = sourceManager();
