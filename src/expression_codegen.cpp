@@ -2749,6 +2749,96 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
         throw std::runtime_error("symbol tables not initialized");
     }
     
+    // Handle nested member access (e.g., msg.author.username)
+    if (auto *nestedAccess = dynamic_cast<MemberAccessExpr *>(memberAccess->object.get())) {
+        // Recursively evaluate the nested access to get the struct value
+        LLVMValueRef nestedValue = genMemberAccess(nestedAccess);
+        
+        // Get the type info of the nested field
+        TypeInfo nestedTypeInfo = inferType(nestedAccess);
+        if (nestedTypeInfo.type != QuarkType::Struct) {
+            throw std::runtime_error("nested member access on non-struct type");
+        }
+        
+        // Get the struct definition
+        auto defIt = g_struct_defs_->find(nestedTypeInfo.structName);
+        if (defIt == g_struct_defs_->end()) {
+            throw std::runtime_error("struct definition not found: " + nestedTypeInfo.structName);
+        }
+        
+        // Collect all fields including inherited ones
+        std::vector<std::pair<std::string, std::string>> allFields;
+        std::function<void(const std::string&)> collectInheritedFields = [&](const std::string& currentStructName) {
+            auto currentIt = g_struct_defs_->find(currentStructName);
+            if (currentIt == g_struct_defs_->end()) return;
+            const StructDefStmt* currentStruct = currentIt->second;
+            if (!currentStruct->parentName.empty()) {
+                collectInheritedFields(currentStruct->parentName);
+            }
+            for (const auto& field : currentStruct->fields) {
+                allFields.push_back(field);
+            }
+        };
+        collectInheritedFields(nestedTypeInfo.structName);
+        
+        // Find the field index
+        int fieldIndex = -1;
+        for (size_t i = 0; i < allFields.size(); i++) {
+            if (allFields[i].first == memberAccess->fieldName) {
+                fieldIndex = (int)i;
+                break;
+            }
+        }
+        if (fieldIndex == -1) {
+            throw std::runtime_error("field not found: " + memberAccess->fieldName + " in struct " + nestedTypeInfo.structName);
+        }
+        
+        // Get the struct LLVM type
+        auto structTypeIt = g_struct_types_->find(nestedTypeInfo.structName);
+        if (structTypeIt == g_struct_types_->end()) {
+            throw std::runtime_error("struct LLVM type not found: " + nestedTypeInfo.structName);
+        }
+        LLVMTypeRef structType = structTypeIt->second;
+        
+        // Check if nestedValue is a struct value or a pointer
+        LLVMTypeRef nestedValueType = LLVMTypeOf(nestedValue);
+        LLVMTypeKind nestedKind = LLVMGetTypeKind(nestedValueType);
+        
+        LLVMValueRef fieldValue;
+        if (nestedKind == LLVMStructTypeKind) {
+            // It's a struct value - use extractvalue
+            fieldValue = LLVMBuildExtractValue(builder_, nestedValue, fieldIndex, "nested_member_val");
+        } else if (nestedKind == LLVMPointerTypeKind) {
+            // It's a pointer - use GEP and load
+            LLVMTypeRef structPtrTy = LLVMPointerType(structType, 0);
+            LLVMValueRef basePtr = LLVMBuildBitCast(builder_, nestedValue, structPtrTy, "nested_ptr_cast");
+            LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structType, basePtr, fieldIndex, "nested_member_ptr");
+            
+            // Determine field type for load
+            const std::string& fieldTypeName = allFields[fieldIndex].second;
+            LLVMTypeRef fieldType;
+            if (fieldTypeName == "str") {
+                fieldType = int8ptr_t_;
+            } else if (fieldTypeName == "int") {
+                fieldType = int32_t_;
+            } else if (fieldTypeName == "bool") {
+                fieldType = bool_t_;
+            } else {
+                auto structFieldTypeIt = g_struct_types_->find(fieldTypeName);
+                if (structFieldTypeIt != g_struct_types_->end()) {
+                    fieldType = structFieldTypeIt->second;
+                } else {
+                    fieldType = int8ptr_t_; // fallback
+                }
+            }
+            fieldValue = LLVMBuildLoad2(builder_, fieldType, fieldPtr, "nested_member_val");
+        } else {
+            throw std::runtime_error("unexpected nested value type kind: " + std::to_string(nestedKind));
+        }
+        
+        return fieldValue;
+    }
+    
         if (auto *varExpr = dynamic_cast<VariableExprAST *>(memberAccess->object.get())) {
         // Get the struct instance
         auto it = g_named_values_->find(varExpr->name);

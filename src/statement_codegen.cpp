@@ -1620,6 +1620,84 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt* memberAssign)
     if (verbose_)
         printf("[codegen] processing member assignment\n");
     
+    // Handle nested member access (e.g., this.author.id = value)
+    if (auto* nestedAccess = dynamic_cast<MemberAccessExpr*>(memberAssign->object.get())) {
+        // We need to get a pointer to the nested struct field, then GEP into it
+        // First, get the type info of the nested object
+        TypeInfo nestedTypeInfo = expressionCodeGen_->inferType(nestedAccess);
+        if (nestedTypeInfo.type != QuarkType::Struct) {
+            throw std::runtime_error("nested member assignment on non-struct type");
+        }
+        
+        // Get the struct definition for the nested type
+        auto defIt = g_struct_defs_->find(nestedTypeInfo.structName);
+        if (defIt == g_struct_defs_->end()) {
+            throw std::runtime_error("struct definition not found: " + nestedTypeInfo.structName);
+        }
+        
+        // Get the struct LLVM type
+        auto structTypeIt = g_struct_types_->find(nestedTypeInfo.structName);
+        if (structTypeIt == g_struct_types_->end()) {
+            throw std::runtime_error("struct LLVM type not found: " + nestedTypeInfo.structName);
+        }
+        LLVMTypeRef nestedStructType = structTypeIt->second;
+        
+        // Collect all fields including inherited ones
+        std::vector<std::pair<std::string, std::string>> allFields;
+        std::function<void(const std::string&)> collectInheritedFields = [&](const std::string& currentStructName) {
+            auto currentIt = g_struct_defs_->find(currentStructName);
+            if (currentIt == g_struct_defs_->end()) return;
+            StructDefStmt* currentStruct = currentIt->second;
+            if (!currentStruct->parentName.empty()) {
+                collectInheritedFields(currentStruct->parentName);
+            }
+            for (const auto& field : currentStruct->fields) {
+                allFields.push_back(field);
+            }
+        };
+        collectInheritedFields(nestedTypeInfo.structName);
+        
+        // Find the field index for the target field
+        int fieldIndex = -1;
+        std::string fieldType;
+        for (size_t i = 0; i < allFields.size(); ++i) {
+            if (allFields[i].first == memberAssign->fieldName) {
+                fieldIndex = static_cast<int>(i);
+                fieldType = allFields[i].second;
+                break;
+            }
+        }
+        if (fieldIndex == -1) {
+            throw std::runtime_error("Field '" + memberAssign->fieldName + "' not found in struct " + nestedTypeInfo.structName);
+        }
+        
+        // Now we need to get a pointer to the nested struct
+        // We need to walk the chain and get GEP pointers all the way down
+        LLVMValueRef nestedStructPtr = genNestedMemberPtr(nestedAccess);
+        
+        // Get pointer to the field within the nested struct
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, nestedStructType, nestedStructPtr, fieldIndex, "nested_field_ptr");
+        
+        // Generate the value to store
+        LLVMValueRef value;
+        if (fieldType == "str") {
+            value = expressionCodeGen_->genExpr(memberAssign->value.get());
+        } else if (fieldType == "int") {
+            value = expressionCodeGen_->genExprInt(memberAssign->value.get());
+        } else if (fieldType == "bool") {
+            value = expressionCodeGen_->genExprBool(memberAssign->value.get());
+        } else {
+            value = expressionCodeGen_->genExpr(memberAssign->value.get());
+        }
+        
+        // Store the value
+        LLVMBuildStore(builder_, value, fieldPtr);
+        
+        if (verbose_)
+            printf("[codegen] completed nested member assignment\n");
+        return;
+    }
+    
         if (auto* varExpr = dynamic_cast<VariableExprAST*>(memberAssign->object.get())) {
         auto it = g_named_values_->find(varExpr->name);
         if (it == g_named_values_->end()) {
@@ -1744,6 +1822,139 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt* memberAssign)
     } else {
         throw std::runtime_error("Member assignment on non-variable expressions not supported");
     }
+}
+
+LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr* memberAccess)
+{
+    // This function returns a pointer to the struct field for nested assignment
+    // e.g., for this.author, it returns a pointer to the author field
+    
+    if (auto* varExpr = dynamic_cast<VariableExprAST*>(memberAccess->object.get())) {
+        // Base case: variable.field - get pointer to the field
+        auto it = g_named_values_->find(varExpr->name);
+        if (it == g_named_values_->end()) {
+            throw std::runtime_error("Unknown variable '" + varExpr->name + "' in nested member access");
+        }
+        
+        // Get the struct type info
+        auto localIt = expressionCodeGen_->variableTypes_.find(varExpr->name);
+        if (localIt == expressionCodeGen_->variableTypes_.end()) {
+            throw std::runtime_error("Type info not found for variable: " + varExpr->name);
+        }
+        const TypeInfo& typeInfo = localIt->second;
+        if (typeInfo.type != QuarkType::Struct) {
+            throw std::runtime_error("Variable is not a struct: " + varExpr->name);
+        }
+        
+        // Get struct LLVM type
+        auto structTypeIt = g_struct_types_->find(typeInfo.structName);
+        if (structTypeIt == g_struct_types_->end()) {
+            throw std::runtime_error("Struct LLVM type not found: " + typeInfo.structName);
+        }
+        LLVMTypeRef structType = structTypeIt->second;
+        
+        // Collect all fields including inherited ones
+        std::vector<std::pair<std::string, std::string>> allFields;
+        std::function<void(const std::string&)> collectInheritedFields = [&](const std::string& currentStructName) {
+            auto currentIt = g_struct_defs_->find(currentStructName);
+            if (currentIt == g_struct_defs_->end()) return;
+            StructDefStmt* currentStruct = currentIt->second;
+            if (!currentStruct->parentName.empty()) {
+                collectInheritedFields(currentStruct->parentName);
+            }
+            for (const auto& field : currentStruct->fields) {
+                allFields.push_back(field);
+            }
+        };
+        collectInheritedFields(typeInfo.structName);
+        
+        // Find the field index
+        int fieldIndex = -1;
+        for (size_t i = 0; i < allFields.size(); i++) {
+            if (allFields[i].first == memberAccess->fieldName) {
+                fieldIndex = (int)i;
+                break;
+            }
+        }
+        if (fieldIndex == -1) {
+            throw std::runtime_error("Field not found: " + memberAccess->fieldName + " in struct " + typeInfo.structName);
+        }
+        
+        // Get the base pointer
+        LLVMValueRef objectAlloca = it->second;
+        LLVMValueRef objectPtrForGEP = nullptr;
+        
+        if (varExpr->name == "this") {
+            // For 'this', load the pointer from the alloca
+            LLVMTypeRef ptrToStructTy = LLVMPointerType(structType, 0);
+            objectPtrForGEP = LLVMBuildLoad2(builder_, ptrToStructTy, objectAlloca, "this.ptr.load");
+        } else {
+            // For regular variables, check if it's an alloca of struct or pointer to struct
+            LLVMTypeRef allocaTy = LLVMTypeOf(objectAlloca);
+            LLVMTypeRef allocatedTy = LLVMGetElementType(allocaTy);
+            if (LLVMGetTypeKind(allocatedTy) == LLVMStructTypeKind) {
+                objectPtrForGEP = objectAlloca;
+            } else if (LLVMGetTypeKind(allocatedTy) == LLVMPointerTypeKind) {
+                objectPtrForGEP = LLVMBuildLoad2(builder_, allocatedTy, objectAlloca, "obj.ptr.load");
+            } else {
+                throw std::runtime_error("Variable '" + varExpr->name + "' is not a struct type");
+            }
+        }
+        
+        // Build GEP to get pointer to the field
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structType, objectPtrForGEP, fieldIndex, "nested_member_ptr");
+        return fieldPtr;
+        
+    } else if (auto* nestedAccess = dynamic_cast<MemberAccessExpr*>(memberAccess->object.get())) {
+        // Recursive case: nested.field.field - get pointer to nested field first, then GEP further
+        LLVMValueRef outerFieldPtr = genNestedMemberPtr(nestedAccess);
+        
+        // Get type info for the outer field
+        TypeInfo nestedTypeInfo = expressionCodeGen_->inferType(nestedAccess);
+        if (nestedTypeInfo.type != QuarkType::Struct) {
+            throw std::runtime_error("Nested member access on non-struct type");
+        }
+        
+        // Get struct LLVM type
+        auto structTypeIt = g_struct_types_->find(nestedTypeInfo.structName);
+        if (structTypeIt == g_struct_types_->end()) {
+            throw std::runtime_error("Struct LLVM type not found: " + nestedTypeInfo.structName);
+        }
+        LLVMTypeRef nestedStructType = structTypeIt->second;
+        
+        // Collect all fields including inherited ones
+        std::vector<std::pair<std::string, std::string>> allFields;
+        std::function<void(const std::string&)> collectInheritedFields = [&](const std::string& currentStructName) {
+            auto currentIt = g_struct_defs_->find(currentStructName);
+            if (currentIt == g_struct_defs_->end()) return;
+            StructDefStmt* currentStruct = currentIt->second;
+            if (!currentStruct->parentName.empty()) {
+                collectInheritedFields(currentStruct->parentName);
+            }
+            for (const auto& field : currentStruct->fields) {
+                allFields.push_back(field);
+            }
+        };
+        collectInheritedFields(nestedTypeInfo.structName);
+        
+        // Find the field index
+        int fieldIndex = -1;
+        for (size_t i = 0; i < allFields.size(); i++) {
+            if (allFields[i].first == memberAccess->fieldName) {
+                fieldIndex = (int)i;
+                break;
+            }
+        }
+        if (fieldIndex == -1) {
+            throw std::runtime_error("Field not found: " + memberAccess->fieldName + " in struct " + nestedTypeInfo.structName);
+        }
+        
+        // Build GEP from the outer field pointer to get pointer to this field
+        LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, nestedStructType, outerFieldPtr, fieldIndex, "deep_nested_member_ptr");
+        return fieldPtr;
+    }
+    
+    throw std::runtime_error("Unsupported nested member access pattern");
 }
 
 void StatementCodeGen::collectStructDefs(StmtAST* stmt, std::vector<StructDefStmt*>& structDefs)

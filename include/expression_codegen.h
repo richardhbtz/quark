@@ -11,9 +11,11 @@
 struct CompilationContext;
 class ErrorReporter;
 class SourceManager;
+class StatementCodeGen;
 
 class ExpressionCodeGen
 {
+    friend class StatementCodeGen;
 public:
     ExpressionCodeGen(LLVMContextRef ctx, LLVMModuleRef module, LLVMBuilderRef builder, 
                       ExternalFunctions* externalFunctions, bool verbose = false,

@@ -97,4 +97,7 @@ private:
     void genDerefAssignStmt(DerefAssignStmt* derefAssign);
     void genArrayAssignStmt(ArrayAssignStmt* arrayAssign);
     void genMatchStmt(MatchStmt* matchStmt);
+    
+    // Helper for nested member assignment - returns pointer to the nested struct field
+    LLVMValueRef genNestedMemberPtr(MemberAccessExpr* memberAccess);
 };
