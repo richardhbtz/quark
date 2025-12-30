@@ -209,6 +209,72 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 }
             }
             throw CodeGenError("field '" + memberAccess->fieldName + "' not found in struct " + objectStructName, expr->location);
+        } else if (auto *nestedAccess = dynamic_cast<MemberAccessExpr *>(memberAccess->object.get())) {
+            // Handle nested member access (e.g., msg.author.id)
+            TypeInfo nestedType = inferType(nestedAccess);
+            if (nestedType.type != QuarkType::Struct) {
+                throw CodeGenError("nested member access on non-struct type", expr->location);
+            }
+            
+            std::string objectStructName = nestedType.structName;
+            
+            // Find the struct definition
+            auto defIt = g_struct_defs_->find(objectStructName);
+            if (defIt == g_struct_defs_->end()) {
+                throw CodeGenError("struct definition not found: " + objectStructName, expr->location);
+            }
+            
+            // Collect all fields including inherited ones
+            std::vector<std::pair<std::string, std::string>> allFields;
+            std::function<void(const std::string&)> collectInheritedFields = [&](const std::string& currentStructName) {
+                auto currentIt = g_struct_defs_->find(currentStructName);
+                if (currentIt == g_struct_defs_->end()) {
+                    return;
+                }
+                const StructDefStmt* currentStruct = currentIt->second;
+                if (!currentStruct->parentName.empty()) {
+                    collectInheritedFields(currentStruct->parentName);
+                }
+                for (const auto& field : currentStruct->fields) {
+                    allFields.push_back(field);
+                }
+            };
+            collectInheritedFields(objectStructName);
+            
+            for (const auto& field : allFields) {
+                if (field.first == memberAccess->fieldName) {
+                    QuarkType fieldType = QuarkType::Unknown;
+                    if (field.second == "int") fieldType = QuarkType::Int;
+                    else if (field.second == "float") fieldType = QuarkType::Float;
+                    else if (field.second == "double") fieldType = QuarkType::Double;
+                    else if (field.second == "str") fieldType = QuarkType::String;
+                    else if (field.second == "bool") fieldType = QuarkType::Boolean;
+                    else if (field.second.size() > 2 && field.second.substr(field.second.size() - 2) == "[]") {
+                        std::string elementTypeName = field.second.substr(0, field.second.size() - 2);
+                        QuarkType elementType = QuarkType::Unknown;
+                        if (elementTypeName == "str") elementType = QuarkType::String;
+                        else if (elementTypeName == "int") elementType = QuarkType::Int;
+                        else if (elementTypeName == "float") elementType = QuarkType::Float;
+                        else if (elementTypeName == "double") elementType = QuarkType::Double;
+                        else if (elementTypeName == "bool") elementType = QuarkType::Boolean;
+                        else if (g_struct_defs_ && g_struct_defs_->find(elementTypeName) != g_struct_defs_->end()) {
+                            elementType = QuarkType::Struct;
+                        }
+                        return TypeInfo(QuarkType::Array, expr->location, "", elementType);
+                    }
+                    else if (g_struct_defs_ && g_struct_defs_->find(field.second) != g_struct_defs_->end()) {
+                        fieldType = QuarkType::Struct;
+                    }
+                    
+                    if (fieldType == QuarkType::Struct) {
+                        return TypeInfo(fieldType, expr->location, field.second);
+                    } else {
+                        return TypeInfo(fieldType, expr->location);
+                    }
+                }
+            }
+            
+            throw CodeGenError("field '" + memberAccess->fieldName + "' not found in struct " + objectStructName, expr->location);
         } else {
             auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
                 auto file = sm->getFile(expr->location.filename);
