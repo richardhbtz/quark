@@ -561,7 +561,12 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             throw CodeGenError("Unknown array method: " + methodCall->methodName, expr->location);
         }
 
-                std::string builtinName = "str_" + methodCall->methodName;
+        // Special case for str.split() which returns str[]
+        if (methodCall->methodName == "split") {
+            return TypeInfo(QuarkType::Array, expr->location, "", QuarkType::String);
+        }
+
+        std::string builtinName = "str_" + methodCall->methodName;
         
         if (builtinFunctions_ && builtinFunctions_->isBuiltin(builtinName)) {
             const BuiltinFunction* builtin = builtinFunctions_->getBuiltin(builtinName);
@@ -660,6 +665,10 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 }
                 if (call->callee == "array_free") {
                     return TypeInfo(QuarkType::Void, expr->location);
+                }
+                // str_split returns str[]
+                if (call->callee == "str_split") {
+                    return TypeInfo(QuarkType::Array, expr->location, "", QuarkType::String, 0);
                 }
 
                                 if (bi->returnType == int32_t_) {
@@ -812,6 +821,13 @@ void ExpressionCodeGen::declareFunctionType(const std::string &name, QuarkType r
     functionTypes_[name] = TypeInfo(returnType, loc, structName);
     if (verbose_)
         printf("[codegen] registered function '%s' with return type\n", name.c_str());
+}
+
+void ExpressionCodeGen::declareFunctionType(const std::string &name, QuarkType returnType, const SourceLocation &loc, QuarkType elementType, size_t arraySize)
+{
+    functionTypes_[name] = TypeInfo(returnType, loc, "", elementType, arraySize);
+    if (verbose_)
+        printf("[codegen] registered function '%s' with array return type\n", name.c_str());
 }
 
 std::optional<double> ExpressionCodeGen::evalConst(ExprAST *expr)

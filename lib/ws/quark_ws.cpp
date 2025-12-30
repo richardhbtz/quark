@@ -61,6 +61,10 @@ int ws_connect(int handle, const char* url, const char* const* headers, int head
 	try {
 		client->socket->setUrl(url);
 
+		// Enable automatic ping/pong to keep connection alive
+		client->socket->setPingInterval(30); // Send ping every 30 seconds
+		client->socket->enablePong(); // Respond to server pings
+
 		// If the URL uses wss://, enable TLS options so IXWebSocket will use system
 		// certificates on platforms like macOS. By default ixwebsocket may require
 		// explicit TLS options for some builds, so set caFile="SYSTEM" here.

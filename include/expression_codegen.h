@@ -42,6 +42,7 @@ public:
     void declareVariable(const std::string &name, QuarkType type, const SourceLocation &loc, const std::string &structName = "", const std::string &pointerType = "");
     void declareVariable(const std::string &name, QuarkType type, const SourceLocation &loc, QuarkType elementType, size_t arraySize);
     void declareFunctionType(const std::string &name, QuarkType returnType, const SourceLocation &loc, const std::string &structName = "");
+    void declareFunctionType(const std::string &name, QuarkType returnType, const SourceLocation &loc, QuarkType elementType, size_t arraySize);
     
     // Symbol table access
     void setGlobalSymbolTables(std::unordered_map<std::string, LLVMValueRef>* functionMap,

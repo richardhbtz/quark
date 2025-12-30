@@ -257,6 +257,16 @@ void BuiltinFunctions::registerStringFunctions() {
         [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
             return stringLength(builder, args);
         });
+
+        registerBuiltin("str_starts_with", bool_t_, {int8ptr_t_, int8ptr_t_}, false,
+        [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+            return stringStartsWith(builder, args);
+        });
+
+        registerBuiltin("str_ends_with", bool_t_, {int8ptr_t_, int8ptr_t_}, false,
+        [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+            return stringEndsWith(builder, args);
+        });
 }
 
 void BuiltinFunctions::registerArrayFunctions() {
@@ -626,10 +636,17 @@ void BuiltinFunctions::registerWithGlobalMap(std::unordered_map<std::string, LLV
 
 void BuiltinFunctions::registerTypesWithExpressionCodeGen(ExpressionCodeGen* exprGen) {
     if (!exprGen) return;
-        for (const auto &pair : builtins_) {
+    for (const auto &pair : builtins_) {
         const std::string &name = pair.first;
         const BuiltinFunction* bi = pair.second.get();
         if (!bi) continue;
+        
+        // Special handling for str_split which returns str[]
+        if (name == "str_split") {
+            exprGen->declareFunctionType(name, QuarkType::Array, SourceLocation(), QuarkType::String, 0);
+            continue;
+        }
+        
         QuarkType qt = QuarkType::Unknown;
         if (bi->returnType == int32_t_) qt = QuarkType::Int;
         else if (bi->returnType == float_t_) qt = QuarkType::Float;
@@ -740,6 +757,13 @@ void BuiltinFunctions::declareCLibraryFunctions() {
         LLVMTypeRef paramTypes[] = {int8ptr_t_};
         LLVMTypeRef funcType = LLVMFunctionType(int32_t_, paramTypes, 1, 0);
         atoi_fn_ = LLVMAddFunction(module_, "atoi", funcType);
+    }
+
+    // strncmp: int strncmp(const char* s1, const char* s2, size_t n)
+    {
+        LLVMTypeRef paramTypes[] = {int8ptr_t_, int8ptr_t_, int32_t_};
+        LLVMTypeRef funcType = LLVMFunctionType(int32_t_, paramTypes, 3, 0);
+        strncmp_fn_ = LLVMAddFunction(module_, "strncmp", funcType);
     }
 }
 
@@ -1104,19 +1128,208 @@ LLVMValueRef BuiltinFunctions::stringReplace(LLVMBuilderRef builder, const std::
 LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
     if (args.size() != 2) return nullptr;
     
-            LLVMValueRef str = args[0];
+    LLVMValueRef str = args[0];
     LLVMValueRef delimiter = args[1];
     
-        LLVMValueRef arraySize = LLVMConstInt(int32_t_, 10 * sizeof(char*), 0);
-    LLVMValueRef resultArray = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &arraySize, 1, "split_result");
-    LLVMValueRef typedArray = LLVMBuildBitCast(builder, resultArray, LLVMPointerType(int8ptr_t_, 0), "typed_array");
+    // Get delimiter length
+    LLVMValueRef delimLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &delimiter, 1, "delim_len");
     
-            LLVMValueRef zeroIndex = LLVMConstInt(int32_t_, 0, 0);
-    LLVMValueRef ss_idx0[] = { zeroIndex };
-    LLVMValueRef firstElement = LLVMBuildGEP2(builder, int8ptr_t_, typedArray, ss_idx0, 1, "first_element");
-    LLVMBuildStore(builder, str, firstElement);
+    // Get the current function and create basic blocks
+    LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder);
+    LLVMValueRef function = LLVMGetBasicBlockParent(currentBB);
     
-    return typedArray;
+    // First pass: count occurrences of delimiter to determine array size
+    LLVMBasicBlockRef countLoopBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_count_loop");
+    LLVMBasicBlockRef countFoundBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_count_found");
+    LLVMBasicBlockRef countDoneBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_count_done");
+    
+    // Initialize count to 1 (minimum number of parts)
+    LLVMValueRef countAlloca = LLVMBuildAlloca(builder, int32_t_, "split_count");
+    LLVMBuildStore(builder, LLVMConstInt(int32_t_, 1, 0), countAlloca);
+    LLVMValueRef searchPtrAlloca = LLVMBuildAlloca(builder, int8ptr_t_, "search_ptr");
+    LLVMBuildStore(builder, str, searchPtrAlloca);
+    
+    LLVMBuildBr(builder, countLoopBB);
+    
+    // Count loop
+    LLVMPositionBuilderAtEnd(builder, countLoopBB);
+    LLVMValueRef searchPtr = LLVMBuildLoad2(builder, int8ptr_t_, searchPtrAlloca, "cur_search");
+    LLVMValueRef searchArgs[] = {searchPtr, delimiter};
+    LLVMValueRef foundPos = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strstr_fn_), strstr_fn_, searchArgs, 2, "found_delim");
+    LLVMValueRef nullPtr = LLVMConstNull(int8ptr_t_);
+    LLVMValueRef isFound = LLVMBuildICmp(builder, LLVMIntNE, foundPos, nullPtr, "is_found");
+    LLVMBuildCondBr(builder, isFound, countFoundBB, countDoneBB);
+    
+    // Found delimiter - increment count and advance search pointer
+    LLVMPositionBuilderAtEnd(builder, countFoundBB);
+    LLVMValueRef oldCount = LLVMBuildLoad2(builder, int32_t_, countAlloca, "old_count");
+    LLVMValueRef newCount = LLVMBuildAdd(builder, oldCount, LLVMConstInt(int32_t_, 1, 0), "new_count");
+    LLVMBuildStore(builder, newCount, countAlloca);
+    // Advance past delimiter
+    LLVMValueRef sp_idx_next[] = { delimLen };
+    LLVMValueRef nextPtr = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), foundPos, sp_idx_next, 1, "next_ptr");
+    LLVMBuildStore(builder, nextPtr, searchPtrAlloca);
+    LLVMBuildBr(builder, countLoopBB);
+    
+    // Done counting
+    LLVMPositionBuilderAtEnd(builder, countDoneBB);
+    LLVMValueRef totalCount = LLVMBuildLoad2(builder, int32_t_, countAlloca, "total_count");
+    
+    // Allocate array: (count + 1) * sizeof(char*) for null terminator, plus 4 bytes for length header
+    LLVMValueRef ptrSize = LLVMConstInt(int32_t_, 8, 0); // sizeof(char*)
+    LLVMValueRef countPlusOne = LLVMBuildAdd(builder, totalCount, LLVMConstInt(int32_t_, 1, 0), "count_plus_one");
+    LLVMValueRef arrayBytes = LLVMBuildMul(builder, countPlusOne, ptrSize, "array_bytes");
+    LLVMValueRef totalBytes = LLVMBuildAdd(builder, arrayBytes, LLVMConstInt(int32_t_, 4, 0), "total_bytes");
+    LLVMValueRef rawBuffer = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &totalBytes, 1, "split_buf");
+    
+    // Store length in header (first 4 bytes)
+    LLVMValueRef headerPtr = LLVMBuildPointerCast(builder, rawBuffer, LLVMPointerType(int32_t_, 0), "header_ptr");
+    LLVMBuildStore(builder, totalCount, headerPtr);
+    
+    // Get pointer to data (after header)
+    LLVMValueRef sp_idx_data[] = { LLVMConstInt(int32_t_, 4, 0) };
+    LLVMValueRef dataPtr = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), rawBuffer, sp_idx_data, 1, "data_ptr");
+    LLVMValueRef resultArray = LLVMBuildPointerCast(builder, dataPtr, LLVMPointerType(int8ptr_t_, 0), "result_array");
+    
+    // Second pass: actually split the string
+    LLVMBasicBlockRef splitLoopBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_loop");
+    LLVMBasicBlockRef splitFoundBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_found");
+    LLVMBasicBlockRef splitDoneBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_done");
+    
+    // Reset search pointer and initialize index
+    LLVMBuildStore(builder, str, searchPtrAlloca);
+    LLVMValueRef indexAlloca = LLVMBuildAlloca(builder, int32_t_, "split_index");
+    LLVMBuildStore(builder, LLVMConstInt(int32_t_, 0, 0), indexAlloca);
+    LLVMValueRef startPtrAlloca = LLVMBuildAlloca(builder, int8ptr_t_, "start_ptr");
+    LLVMBuildStore(builder, str, startPtrAlloca);
+    
+    LLVMBuildBr(builder, splitLoopBB);
+    
+    // Split loop
+    LLVMPositionBuilderAtEnd(builder, splitLoopBB);
+    LLVMValueRef curSearchPtr = LLVMBuildLoad2(builder, int8ptr_t_, searchPtrAlloca, "cur_search2");
+    LLVMValueRef searchArgs2[] = {curSearchPtr, delimiter};
+    LLVMValueRef foundPos2 = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strstr_fn_), strstr_fn_, searchArgs2, 2, "found_delim2");
+    LLVMValueRef isFound2 = LLVMBuildICmp(builder, LLVMIntNE, foundPos2, nullPtr, "is_found2");
+    LLVMBuildCondBr(builder, isFound2, splitFoundBB, splitDoneBB);
+    
+    // Found delimiter - extract substring
+    LLVMPositionBuilderAtEnd(builder, splitFoundBB);
+    LLVMValueRef startPtr = LLVMBuildLoad2(builder, int8ptr_t_, startPtrAlloca, "start");
+    // Calculate length of this segment
+    LLVMValueRef segLen64 = LLVMBuildPtrDiff2(builder, LLVMInt8TypeInContext(ctx_), foundPos2, startPtr, "seg_len64");
+    LLVMValueRef segLen = LLVMBuildTrunc(builder, segLen64, int32_t_, "seg_len");
+    // Allocate and copy segment
+    LLVMValueRef segSize = LLVMBuildAdd(builder, segLen, LLVMConstInt(int32_t_, 1, 0), "seg_size");
+    LLVMValueRef segment = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &segSize, 1, "segment");
+    LLVMValueRef memcpyArgs[] = {segment, startPtr, segLen};
+    LLVMBuildCall2(builder, LLVMGlobalGetValueType(memcpy_fn_), memcpy_fn_, memcpyArgs, 3, "");
+    // Null terminate
+    LLVMValueRef sp_idx_end[] = { segLen };
+    LLVMValueRef segEnd = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), segment, sp_idx_end, 1, "seg_end");
+    LLVMBuildStore(builder, LLVMConstInt(LLVMInt8TypeInContext(ctx_), 0, 0), segEnd);
+    // Store in result array
+    LLVMValueRef curIndex = LLVMBuildLoad2(builder, int32_t_, indexAlloca, "cur_idx");
+    LLVMValueRef sp_idx_arr[] = { curIndex };
+    LLVMValueRef arrSlot = LLVMBuildGEP2(builder, int8ptr_t_, resultArray, sp_idx_arr, 1, "arr_slot");
+    LLVMBuildStore(builder, segment, arrSlot);
+    // Increment index
+    LLVMValueRef newIndex = LLVMBuildAdd(builder, curIndex, LLVMConstInt(int32_t_, 1, 0), "new_idx");
+    LLVMBuildStore(builder, newIndex, indexAlloca);
+    // Advance pointers past delimiter
+    LLVMValueRef sp_idx_next2[] = { delimLen };
+    LLVMValueRef nextStart = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), foundPos2, sp_idx_next2, 1, "next_start");
+    LLVMBuildStore(builder, nextStart, searchPtrAlloca);
+    LLVMBuildStore(builder, nextStart, startPtrAlloca);
+    LLVMBuildBr(builder, splitLoopBB);
+    
+    // Done splitting - add final segment
+    LLVMPositionBuilderAtEnd(builder, splitDoneBB);
+    LLVMValueRef finalStart = LLVMBuildLoad2(builder, int8ptr_t_, startPtrAlloca, "final_start");
+    LLVMValueRef finalLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &finalStart, 1, "final_len");
+    LLVMValueRef finalSize = LLVMBuildAdd(builder, finalLen, LLVMConstInt(int32_t_, 1, 0), "final_size");
+    LLVMValueRef finalSeg = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &finalSize, 1, "final_seg");
+    LLVMValueRef strcpyArgs[] = {finalSeg, finalStart};
+    LLVMBuildCall2(builder, LLVMGlobalGetValueType(strcpy_fn_), strcpy_fn_, strcpyArgs, 2, "");
+    // Store final segment
+    LLVMValueRef finalIndex = LLVMBuildLoad2(builder, int32_t_, indexAlloca, "final_idx");
+    LLVMValueRef sp_idx_final[] = { finalIndex };
+    LLVMValueRef finalSlot = LLVMBuildGEP2(builder, int8ptr_t_, resultArray, sp_idx_final, 1, "final_slot");
+    LLVMBuildStore(builder, finalSeg, finalSlot);
+    // Null terminate the array
+    LLVMValueRef lastIndex = LLVMBuildAdd(builder, finalIndex, LLVMConstInt(int32_t_, 1, 0), "last_idx");
+    LLVMValueRef sp_idx_null[] = { lastIndex };
+    LLVMValueRef nullSlot = LLVMBuildGEP2(builder, int8ptr_t_, resultArray, sp_idx_null, 1, "null_slot");
+    LLVMBuildStore(builder, nullPtr, nullSlot);
+    
+    return resultArray;
+}
+
+LLVMValueRef BuiltinFunctions::stringStartsWith(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+    if (args.size() != 2) return LLVMConstInt(bool_t_, 0, 0);
+    
+    LLVMValueRef str = args[0];
+    LLVMValueRef prefix = args[1];
+    
+    // Get prefix length
+    LLVMValueRef prefixLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &prefix, 1, "prefix_len");
+    
+    // Compare first prefixLen characters
+    LLVMValueRef strncmpArgs[] = {str, prefix, prefixLen};
+    LLVMValueRef cmpResult = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strncmp_fn_), strncmp_fn_, strncmpArgs, 3, "strncmp_result");
+    
+    // Return true if strncmp returns 0
+    LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
+    return LLVMBuildICmp(builder, LLVMIntEQ, cmpResult, zero, "starts_with_result");
+}
+
+LLVMValueRef BuiltinFunctions::stringEndsWith(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+    if (args.size() != 2) return LLVMConstInt(bool_t_, 0, 0);
+    
+    LLVMValueRef str = args[0];
+    LLVMValueRef suffix = args[1];
+    
+    // Get string and suffix lengths
+    LLVMValueRef strLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &str, 1, "str_len");
+    LLVMValueRef suffixLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &suffix, 1, "suffix_len");
+    
+    // Check if suffix is longer than string
+    LLVMValueRef tooLong = LLVMBuildICmp(builder, LLVMIntUGT, suffixLen, strLen, "suffix_too_long");
+    
+    LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder);
+    LLVMValueRef function = LLVMGetBasicBlockParent(currentBB);
+    LLVMBasicBlockRef compareBB = LLVMAppendBasicBlockInContext(ctx_, function, "ends_with_compare");
+    LLVMBasicBlockRef falseBB = LLVMAppendBasicBlockInContext(ctx_, function, "ends_with_false");
+    LLVMBasicBlockRef mergeBB = LLVMAppendBasicBlockInContext(ctx_, function, "ends_with_merge");
+    
+    LLVMBuildCondBr(builder, tooLong, falseBB, compareBB);
+    
+    // Compare suffix
+    LLVMPositionBuilderAtEnd(builder, compareBB);
+    // Get pointer to end of string minus suffix length
+    LLVMValueRef offset = LLVMBuildSub(builder, strLen, suffixLen, "end_offset");
+    LLVMValueRef ew_idx[] = { offset };
+    LLVMValueRef strEnd = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), str, ew_idx, 1, "str_end");
+    
+    // Compare
+    LLVMValueRef strncmpArgs[] = {strEnd, suffix, suffixLen};
+    LLVMValueRef cmpResult = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strncmp_fn_), strncmp_fn_, strncmpArgs, 3, "strncmp_result");
+    LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
+    LLVMValueRef isEqual = LLVMBuildICmp(builder, LLVMIntEQ, cmpResult, zero, "is_equal");
+    LLVMBuildBr(builder, mergeBB);
+    
+    // False branch
+    LLVMPositionBuilderAtEnd(builder, falseBB);
+    LLVMBuildBr(builder, mergeBB);
+    
+    // Merge
+    LLVMPositionBuilderAtEnd(builder, mergeBB);
+    LLVMValueRef phi = LLVMBuildPhi(builder, bool_t_, "ends_with_result");
+    LLVMValueRef phiValues[] = {isEqual, LLVMConstInt(bool_t_, 0, 0)};
+    LLVMBasicBlockRef phiBlocks[] = {compareBB, falseBB};
+    LLVMAddIncoming(phi, phiValues, phiBlocks, 2);
+    
+    return phi;
 }
 
 LLVMValueRef BuiltinFunctions::stringLength(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {

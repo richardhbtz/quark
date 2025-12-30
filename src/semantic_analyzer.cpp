@@ -92,6 +92,8 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
     addBuiltin("str_find", "int", {{"haystack", "str"}, {"needle", "str"}}, false);
     addBuiltin("str_replace", "str", {{"s", "str"}, {"old", "str"}, {"new", "str"}}, false);
     addBuiltin("str_split", "str[]", {{"s", "str"}, {"delim", "str"}}, false);
+    addBuiltin("str_starts_with", "bool", {{"s", "str"}, {"prefix", "str"}}, false);
+    addBuiltin("str_ends_with", "bool", {{"s", "str"}, {"suffix", "str"}}, false);
     addBuiltin("sin", "double", {{"x", "double"}}, false);
     addBuiltin("cos", "double", {{"x", "double"}}, false);
     addBuiltin("tan", "double", {{"x", "double"}}, false);
@@ -885,7 +887,8 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr* expr) {
             expr->methodName == "charAt" || expr->methodName == "indexOf" ||
             expr->methodName == "slice" || expr->methodName == "find" ||
             expr->methodName == "split" || expr->methodName == "concat" ||
-            expr->methodName == "replace") {
+            expr->methodName == "replace" || expr->methodName == "starts_with" ||
+            expr->methodName == "ends_with") {
             for (auto& arg : expr->args) {
                 analyzeExpr(arg.get());
             }
@@ -893,7 +896,8 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr* expr) {
                 return TypeInfo(QuarkType::Int, expr->location);
             } else if (expr->methodName == "charAt") {
                 return TypeInfo(QuarkType::String, expr->location);
-            } else if (expr->methodName == "find") {
+            } else if (expr->methodName == "find" || expr->methodName == "starts_with" ||
+                       expr->methodName == "ends_with") {
                 return TypeInfo(QuarkType::Boolean, expr->location);
             } else if (expr->methodName == "split") {
                 TypeInfo arrType(QuarkType::Array, expr->location);

@@ -89,6 +89,8 @@ private:
     LLVMValueRef stringReplace(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args);
     LLVMValueRef stringSplit(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args);
     LLVMValueRef stringLength(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args);
+    LLVMValueRef stringStartsWith(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args);
+    LLVMValueRef stringEndsWith(LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args);
     
     // Register a built-in function
     void registerBuiltin(const std::string& name, LLVMTypeRef returnType, 
@@ -112,4 +114,5 @@ private:
     LLVMValueRef strchr_fn_;
     LLVMValueRef fflush_fn_;
     LLVMValueRef atoi_fn_;
+    LLVMValueRef strncmp_fn_;
 };
