@@ -23,6 +23,39 @@ void BuiltinFunctions::registerAllBuiltins() {
     registerArrayFunctions();
     registerMathFunctions();
     registerFormatFunctions();
+    // sleep(ms: int) -> void (cross-platform)
+    registerBuiltin("sleep", void_t_, {int32_t_}, /*isVariadic*/ false,
+        [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
+            LLVMValueRef ms = args.empty() ? LLVMConstInt(int32_t_, 0, 0) : args[0];
+
+#if defined(_WIN32)
+            // Win32 Sleep(DWORD ms)
+            LLVMValueRef sleepFn = LLVMGetNamedFunction(module_, "Sleep");
+            if (!sleepFn) {
+                LLVMTypeRef argTys[] = { int32_t_ };
+                LLVMTypeRef fnTy = LLVMFunctionType(void_t_, argTys, 1, 0);
+                sleepFn = LLVMAddFunction(module_, "Sleep", fnTy);
+            }
+            LLVMValueRef callArgs[] = { ms };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(sleepFn), sleepFn, callArgs, 1, "");
+#else
+            // POSIX usleep(usec)
+            // Convert ms -> usec (ms * 1000)
+            LLVMValueRef thousand = LLVMConstInt(int32_t_, 1000, 0);
+            LLVMValueRef usec = LLVMBuildMul(builder_, ms, thousand, "ms_to_usec");
+
+            LLVMValueRef usleepFn = LLVMGetNamedFunction(module_, "usleep");
+            if (!usleepFn) {
+                LLVMTypeRef argTys[] = { int32_t_ };
+                LLVMTypeRef fnTy = LLVMFunctionType(int32_t_, argTys, 1, 0);
+                usleepFn = LLVMAddFunction(module_, "usleep", fnTy);
+            }
+            LLVMValueRef callArgs[] = { usec };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(usleepFn), usleepFn, callArgs, 1, "");
+#endif
+            return nullptr;
+        }
+    );
         registerBuiltin("to_string", int8ptr_t_, {}, /*isVariadic*/ true,
         [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
                         if (args.size() != 1) {

@@ -112,6 +112,7 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
     addBuiltin("sinh", "double", {{"x", "double"}}, false);
     addBuiltin("cosh", "double", {{"x", "double"}}, false);
     addBuiltin("tanh", "double", {{"x", "double"}}, false);
+    addBuiltin("sleep", "void", {{"ms", "int"}}, false);
     
     addBuiltin("abs_i32", "int", {{"x", "int"}}, false);
     addBuiltin("abs_f64", "double", {{"x", "double"}}, false);
