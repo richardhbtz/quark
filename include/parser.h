@@ -168,9 +168,10 @@ struct AssignStmtAST : StmtAST {
         : varName(name), value(std::move(val)) {}
 };
 
-// Include statement to inline contents of another .k file
+// Import statement to inline contents of another .k file
 struct IncludeStmt : StmtAST {
     std::vector<std::unique_ptr<StmtAST>> stmts;
+    std::vector<std::string> importedFiles; // Track which files were imported for error reporting
     IncludeStmt() = default;
 };
 

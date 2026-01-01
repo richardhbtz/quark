@@ -1,4 +1,4 @@
-#include "lib/json/json.k"
+import "lib/json/json.k"
 
 // EXPECT: Array length: 3
 // EXPECT: Item 0: apple

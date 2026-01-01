@@ -11,7 +11,7 @@ enum TokenKind
     tok_equal,
     tok_brace_open,
     tok_brace_close,
-    tok_include,
+    tok_include,  // 'import' keyword (legacy name kept for compatibility)
     tok_comma,
     tok_string,
     tok_semicolon,

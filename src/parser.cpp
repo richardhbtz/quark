@@ -112,27 +112,29 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return std::make_unique<ContinueStmt>();
     }
 
-        if (cur_.kind == tok_include)
+    if (cur_.kind == tok_include)
     {
         next();
         std::vector<std::string> includePaths;
         
-                if (cur_.kind == tok_brace_open) {
+        // Allow import { "file1.k", "file2.k" }
+        if (cur_.kind == tok_brace_open) {
             next();
-                        while (cur_.kind != tok_brace_close && cur_.kind != tok_eof) {
+            // Expect at least one string or closing brace
+            while (cur_.kind != tok_brace_close && cur_.kind != tok_eof) {
                 if (cur_.kind != tok_string) {
-                    throw ParseError("expected string literal in include list", cur_.location);
+                    throw ParseError("expected string literal in import list", cur_.location);
                 }
                 includePaths.push_back(cur_.text);
                 next();
                 if (cur_.kind == tok_comma) {
                     next();
                 } else if (cur_.kind != tok_brace_close) {
-                    throw ParseError("expected ',' or '}' in include list", cur_.location);
+                    throw ParseError("expected ',' or '}' in import list", cur_.location);
                 }
             }
             if (cur_.kind != tok_brace_close) {
-                throw ParseError("expected '}' to close include list", cur_.location);
+                throw ParseError("expected '}' to close import list", cur_.location);
             }
             next();
         } else {
@@ -142,10 +144,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 if (er && sm) {
                     auto file = sm->getFile(cur_.location.filename);
                     if (file) {
-                        throw EnhancedParseError("expected string literal path after #include", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
+                        throw EnhancedParseError("expected string literal path after import", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
                     }
                 }
-                throw ParseError("expected string literal path after #include", cur_.location);
+                throw ParseError("expected string literal path after import", cur_.location);
             }
             includePaths.push_back(cur_.text);
             next();
@@ -156,21 +158,29 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
 
         auto inc = std::make_unique<IncludeStmt>();
         
-        // Process each included file
+        // Process each imported file
         for (const std::string& path : includePaths) {
             // Read file contents
             std::ifstream f(path);
             if (!f.is_open()) {
-                                if (verbose_) {
-                    printf("[parser] warning: could not open include file: %s\n", path.c_str());
+                if (verbose_) {
+                    printf("[parser] warning: could not open import file: %s\n", path.c_str());
                 }
                 continue;
             }
             std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
             f.close();
 
-                                    Lexer sublex(contents, verbose_, path);
-            Parser subparser(sublex, verbose_);
+            // Add file to source manager for proper error reporting
+            if (ctx_) {
+                ctx_->sourceManager.addFile(path, contents);
+            }
+            
+            // Track imported file
+            inc->importedFiles.push_back(path);
+
+            Lexer sublex(contents, verbose_, path);
+            Parser subparser(sublex, verbose_, ctx_);
             auto subprog = subparser.parseProgram();
 
             for (auto &s : subprog->stmts)
@@ -181,12 +191,12 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return inc;
     }
 
-    // include("path.k");
+    // include("path.k"); - deprecated function-style syntax
     if (cur_.kind == tok_identifier && cur_.text == "include")
     {
         next();
         if (cur_.kind != tok_paren_open)
-            throw ParseError("expected '(' after include", cur_.location);
+            throw ParseError("expected '(' after include (deprecated: use 'import \"file.k\"' instead)", cur_.location);
         next();
         if (cur_.kind != tok_string)
             throw ParseError("expected string literal path in include", cur_.location);
@@ -202,15 +212,21 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         // Read file contents
         std::ifstream f(path);
         if (!f.is_open())
-            throw ParseError(std::string("failed to open include file: ") + path, cur_.location);
+            throw ParseError(std::string("failed to open import file: ") + path, cur_.location);
         std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
         f.close();
 
-                Lexer sublex(contents, verbose_, path);
-        Parser subparser(sublex, verbose_);
+        // Add file to source manager for proper error reporting
+        if (ctx_) {
+            ctx_->sourceManager.addFile(path, contents);
+        }
+
+        Lexer sublex(contents, verbose_, path);
+        Parser subparser(sublex, verbose_, ctx_);
         auto subprog = subparser.parseProgram();
 
         auto inc = std::make_unique<IncludeStmt>();
+        inc->importedFiles.push_back(path);
         for (auto &s : subprog->stmts)
         {
             inc->stmts.push_back(std::move(s));
@@ -1328,9 +1344,11 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
     if (cur_.kind == tok_identifier)
     {
         std::string idName = cur_.text;
+        SourceLocation idLoc = cur_.location;
         next();
 
-                if (cur_.kind == tok_brace_open)
+        // Struct literal
+        if (cur_.kind == tok_brace_open)
         {
             return parseStructLiteral(idName);
         }
@@ -1353,10 +1371,14 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
                 }
             }
             next();
-            return std::make_unique<CallExprAST>(idName, std::move(args));
+            auto call = std::make_unique<CallExprAST>(idName, std::move(args));
+            call->location = idLoc;
+            return call;
         }
 
-                return std::make_unique<VariableExprAST>(idName);
+        auto varExpr = std::make_unique<VariableExprAST>(idName);
+        varExpr->location = idLoc;
+        return varExpr;
     }
 
     if (cur_.kind == tok_true) {

@@ -1,5 +1,5 @@
-#include "lib/toml/toml.k"
-#include "lib/json/json.k"
+import "lib/toml/toml.k"
+import "lib/json/json.k"
 
 //EXPECT: name=Quark|version=2|color=blue|count=3|json={"features":{"color":"blue","count":3},"name":"Quark","version":2}
 int main() {

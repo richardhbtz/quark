@@ -1,4 +1,4 @@
-#include "lib/json/json.k"
+import "lib/json/json.k"
 
 // EXPECT: --- VARIABLES & ARITH ---
 // EXPECT: 42

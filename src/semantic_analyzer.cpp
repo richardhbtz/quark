@@ -167,13 +167,20 @@ bool SemanticAnalyzer::analyze(ProgramAST *program)
     {
         for (const auto &err : errors_)
         {
+            // Get source code from the file where the error occurred
+            std::string sourceCode = sourceCode_;
+            if (auto file = sourceManager_.getFile(err.location.filename))
+            {
+                sourceCode = file->content;
+            }
+            
             if (err.isWarning)
             {
-                errorReporter_.reportWarning(err.message, err.location, sourceCode_, err.errorCode, err.spanLength);
+                errorReporter_.reportWarning(err.message, err.location, sourceCode, err.errorCode, err.spanLength);
             }
             else
             {
-                errorReporter_.reportParseError(err.message, err.location, sourceCode_, err.errorCode, err.spanLength);
+                errorReporter_.reportParseError(err.message, err.location, sourceCode, err.errorCode, err.spanLength);
             }
         }
         return false;
@@ -183,13 +190,20 @@ bool SemanticAnalyzer::analyze(ProgramAST *program)
 
     for (const auto &err : errors_)
     {
+        // Get source code from the file where the error occurred
+        std::string sourceCode = sourceCode_;
+        if (auto file = sourceManager_.getFile(err.location.filename))
+        {
+            sourceCode = file->content;
+        }
+        
         if (err.isWarning)
         {
-            errorReporter_.reportWarning(err.message, err.location, sourceCode_, err.errorCode, err.spanLength);
+            errorReporter_.reportWarning(err.message, err.location, sourceCode, err.errorCode, err.spanLength);
         }
         else
         {
-            errorReporter_.reportParseError(err.message, err.location, sourceCode_, err.errorCode, err.spanLength);
+            errorReporter_.reportParseError(err.message, err.location, sourceCode, err.errorCode, err.spanLength);
         }
     }
 

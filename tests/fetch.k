@@ -1,5 +1,5 @@
-#include "lib/http/http.k"
-#include "lib/json/json.k"
+import "lib/http/http.k"
+import "lib/json/json.k"
 
 //EXPECT: delectus aut autem
 int main()

@@ -1,4 +1,4 @@
-#include "lib/http/http.k"
+import "lib/http/http.k"
 
 //EXPECT: Hello world!
 int main() {

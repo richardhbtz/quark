@@ -4,6 +4,15 @@
 Lexer::Lexer(const std::string &src, bool verbose, const std::string &filename) : src_(src), verbose_(verbose)
 {
     currentLocation_.filename = filename;
+    
+    // Skip UTF-8 BOM if present
+    if (src_.size() >= 3 && 
+        static_cast<unsigned char>(src_[0]) == 0xEF &&
+        static_cast<unsigned char>(src_[1]) == 0xBB &&
+        static_cast<unsigned char>(src_[2]) == 0xBF) {
+        idx_ = 3;
+    }
+    
     cur_ = next();
     if (verbose_)
     {
@@ -120,10 +129,10 @@ Token Lexer::next()
         tok.numberValue = 0.0;
         
         // recognize keywords
-        if (s == "#include") {
+        if (s == "import") {
             tok.kind = tok_include;
             if (verbose_)
-                printf("[lexer] include directive at %d:%d\n", tokenStart.line, tokenStart.column);
+                printf("[lexer] import directive at %d:%d\n", tokenStart.line, tokenStart.column);
             return tok;
         }
 
@@ -281,7 +290,8 @@ Token Lexer::next()
         return tok;
     }
 
-        if (c == '#') {
+    // Handle # for backward compatibility with #include (deprecated)
+    if (c == '#') {
         // consume '#'
         advancePosition(c);
         ++idx_;
@@ -296,11 +306,12 @@ Token Lexer::next()
         tok.location = tokenStart;
         if (s == "include") {
             tok.kind = tok_include;
-            tok.text = "#include";
-            if (verbose_) printf("[lexer] #include at %d:%d\n", tokenStart.line, tokenStart.column);
-                        return tok;
+            tok.text = "import"; // normalize to import
+            if (verbose_) printf("[lexer] #include (deprecated, use 'import') at %d:%d\n", tokenStart.line, tokenStart.column);
+            return tok;
         }
-                tok.kind = tok_unknown;
+        // Unknown preprocessor directive
+        tok.kind = tok_unknown;
         tok.text = "#" + s;
         if (verbose_) printf("[lexer] unknown preprocessor '%s' at %d:%d\n", s.c_str(), tokenStart.line, tokenStart.column);
         return tok;
