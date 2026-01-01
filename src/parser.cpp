@@ -2,6 +2,7 @@
 #include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/source_manager.h"
+#include "../include/module_resolver.h"
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -114,19 +115,35 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
 
     if (cur_.kind == tok_include)
     {
+        SourceLocation importLoc = cur_.location;
         next();
-        std::vector<std::string> includePaths;
+        std::vector<std::string> modulePaths;
         
-        // Allow import { "file1.k", "file2.k" }
+        // Allow import { mod1, mod2 } for multiple imports
         if (cur_.kind == tok_brace_open) {
             next();
-            // Expect at least one string or closing brace
             while (cur_.kind != tok_brace_close && cur_.kind != tok_eof) {
-                if (cur_.kind != tok_string) {
-                    throw ParseError("expected string literal in import list", cur_.location);
+                // Can be identifier (module name) or string (path)
+                if (cur_.kind == tok_identifier) {
+                    // Parse module path: json, http/client, etc.
+                    std::string moduleName = cur_.text;
+                    next();
+                    while (cur_.kind == tok_div) {
+                        next();
+                        if (cur_.kind != tok_identifier) {
+                            throw ParseError("expected module name after '/'", cur_.location);
+                        }
+                        moduleName += "/" + cur_.text;
+                        next();
+                    }
+                    modulePaths.push_back(moduleName);
+                } else if (cur_.kind == tok_string) {
+                    modulePaths.push_back(cur_.text);
+                    next();
+                } else {
+                    throw ParseError("expected module name or string path in import list", cur_.location);
                 }
-                includePaths.push_back(cur_.text);
-                next();
+                
                 if (cur_.kind == tok_comma) {
                     next();
                 } else if (cur_.kind != tok_brace_close) {
@@ -137,49 +154,94 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 throw ParseError("expected '}' to close import list", cur_.location);
             }
             next();
-        } else {
-            if (cur_.kind != tok_string) {
-                auto* er = errorReporter();
-                auto* sm = sourceManager();
-                if (er && sm) {
-                    auto file = sm->getFile(cur_.location.filename);
-                    if (file) {
-                        throw EnhancedParseError("expected string literal path after import", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
-                    }
-                }
-                throw ParseError("expected string literal path after import", cur_.location);
-            }
-            includePaths.push_back(cur_.text);
+        } else if (cur_.kind == tok_identifier) {
+            // import modulename or import mod/submod
+            std::string moduleName = cur_.text;
             next();
+            while (cur_.kind == tok_div) {
+                next();
+                if (cur_.kind != tok_identifier) {
+                    throw ParseError("expected module name after '/'", cur_.location);
+                }
+                moduleName += "/" + cur_.text;
+                next();
+            }
+            modulePaths.push_back(moduleName);
+        } else if (cur_.kind == tok_string) {
+            // Legacy: import "path/to/file.k"
+            modulePaths.push_back(cur_.text);
+            next();
+        } else {
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
+            if (er && sm) {
+                auto file = sm->getFile(cur_.location.filename);
+                if (file) {
+                    throw EnhancedParseError("expected module name or path after 'import'", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
+                }
+            }
+            throw ParseError("expected module name or path after 'import'", cur_.location);
         }
         
         if (cur_.kind == tok_semicolon)
             next();
 
         auto inc = std::make_unique<IncludeStmt>();
+        inc->location = importLoc;
         
-        // Process each imported file
-        for (const std::string& path : includePaths) {
+        // Process each import
+        for (const std::string& modulePath : modulePaths) {
+            std::string resolvedPath;
+            
+            // Check if it's a quoted path (starts with . or has .k extension)
+            bool isQuotedPath = (modulePath.size() >= 2 && modulePath[0] == '.') ||
+                                (modulePath.find(".k") != std::string::npos);
+            
+            if (isQuotedPath) {
+                // Direct file path
+                resolvedPath = modulePath;
+            } else {
+                // Try to resolve via module resolver
+                if (g_moduleResolver) {
+                    auto resolved = g_moduleResolver->resolve(modulePath, cur_.location.filename);
+                    if (resolved) {
+                        resolvedPath = resolved->string();
+                    } else {
+                        throw ParseError("could not resolve module '" + modulePath + "'", importLoc);
+                    }
+                } else {
+                    // Fallback: try lib/<module>/<module>.k pattern
+                    resolvedPath = "lib/" + modulePath + "/" + modulePath + ".k";
+                    // Replace slashes properly
+                    std::string baseMod = modulePath;
+                    auto slashPos = modulePath.find('/');
+                    if (slashPos != std::string::npos) {
+                        baseMod = modulePath.substr(0, slashPos);
+                        resolvedPath = "lib/" + baseMod + "/" + modulePath.substr(slashPos + 1) + ".k";
+                    }
+                }
+            }
+            
             // Read file contents
-            std::ifstream f(path);
+            std::ifstream f(resolvedPath);
             if (!f.is_open()) {
                 if (verbose_) {
-                    printf("[parser] warning: could not open import file: %s\n", path.c_str());
+                    printf("[parser] warning: could not open module file: %s\n", resolvedPath.c_str());
                 }
-                continue;
+                throw ParseError("could not open module '" + modulePath + "' at " + resolvedPath, importLoc);
             }
             std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
             f.close();
 
             // Add file to source manager for proper error reporting
             if (ctx_) {
-                ctx_->sourceManager.addFile(path, contents);
+                ctx_->sourceManager.addFile(resolvedPath, contents);
             }
             
             // Track imported file
-            inc->importedFiles.push_back(path);
+            inc->importedFiles.push_back(resolvedPath);
 
-            Lexer sublex(contents, verbose_, path);
+            Lexer sublex(contents, verbose_, resolvedPath);
             Parser subparser(sublex, verbose_, ctx_);
             auto subprog = subparser.parseProgram();
 

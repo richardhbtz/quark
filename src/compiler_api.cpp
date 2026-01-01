@@ -6,6 +6,7 @@
 #include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/lexer.h"
+#include "../include/module_resolver.h"
 #include "../include/parser.h"
 #include "../include/semantic_analyzer.h"
 #include "../include/source_manager.h"
@@ -180,6 +181,26 @@ static int compileInternal(QuarkCompilerHandle* handle,
     g_sourceManager = std::make_unique<SourceManager>();
     g_errorReporter = std::make_unique<ErrorReporter>(g_cli);
     g_sourceManager->addFile(logicalName, source);
+    
+    // Initialize module resolver
+    std::filesystem::path compilerPath;
+    std::filesystem::path projectPath;
+    
+    // Get compiler path from library paths (first one is usually compiler dir)
+    if (!additionalLibraryPaths.empty()) {
+        compilerPath = additionalLibraryPaths[0];
+    }
+    
+    // Get project path from input file
+    std::filesystem::path inputPath(logicalName);
+    std::error_code ec;
+    if (inputPath.has_parent_path()) {
+        projectPath = std::filesystem::absolute(inputPath.parent_path(), ec);
+    } else {
+        projectPath = std::filesystem::current_path(ec);
+    }
+    
+    g_moduleResolver = std::make_unique<ModuleResolver>(compilerPath, projectPath);
     
     CompilationContext ctx(g_cli, *g_errorReporter, *g_sourceManager);
 

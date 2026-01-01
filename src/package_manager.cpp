@@ -651,6 +651,150 @@ static bool handle_add_dependency(ManifestContext& manifest, const std::string& 
 	return true;
 }
 
+// Clone a git repository into the modules directory
+static bool clone_git_module(const Path& projectRoot, const std::string& repoUrl, const std::string& moduleName)
+{
+	Path modulesDir = projectRoot / "modules";
+	std::error_code ec;
+	
+	// Create modules directory if it doesn't exist
+	if (!std::filesystem::exists(modulesDir, ec))
+	{
+		if (!std::filesystem::create_directories(modulesDir, ec))
+		{
+			g_cli.error("Failed to create modules directory: " + ec.message());
+			return false;
+		}
+	}
+	
+	Path targetDir = modulesDir / moduleName;
+	
+	// Check if module already exists
+	if (std::filesystem::exists(targetDir, ec))
+	{
+		g_cli.warning("Module '" + moduleName + "' already exists. Use 'quark update' to update it.");
+		return false;
+	}
+	
+	// Build git clone command
+	std::string command = "git clone --depth 1 \"" + repoUrl + "\" \"" + targetDir.string() + "\"";
+	
+	g_cli.startSpinner("Cloning " + moduleName + " from " + repoUrl);
+	
+#ifdef _WIN32
+	int result = std::system(command.c_str());
+#else
+	int result = std::system(command.c_str());
+#endif
+	
+	g_cli.stopSpinner(result == 0);
+	
+	if (result != 0)
+	{
+		g_cli.error("Failed to clone repository: " + repoUrl);
+		return false;
+	}
+	
+	// Remove .git directory to save space (optional, can be configurable)
+	Path gitDir = targetDir / ".git";
+	if (std::filesystem::exists(gitDir, ec))
+	{
+		std::filesystem::remove_all(gitDir, ec);
+	}
+	
+	g_cli.success("Installed module '" + moduleName + "' from " + repoUrl);
+	return true;
+}
+
+// Extract module name from git URL
+static std::string extract_module_name(const std::string& repoUrl)
+{
+	// Handle URLs like:
+	// https://github.com/user/repo.git
+	// https://github.com/user/repo
+	// git@github.com:user/repo.git
+	// user/repo (GitHub shorthand)
+	
+	std::string url = repoUrl;
+	
+	// Remove trailing .git
+	if (url.size() > 4 && url.substr(url.size() - 4) == ".git")
+	{
+		url = url.substr(0, url.size() - 4);
+	}
+	
+	// Find the last path component
+	size_t lastSlash = url.rfind('/');
+	size_t lastColon = url.rfind(':');
+	size_t startPos = 0;
+	
+	if (lastSlash != std::string::npos)
+	{
+		startPos = lastSlash + 1;
+	}
+	else if (lastColon != std::string::npos)
+	{
+		startPos = lastColon + 1;
+	}
+	
+	return url.substr(startPos);
+}
+
+// Expand GitHub shorthand to full URL
+static std::string expand_git_url(const std::string& input)
+{
+	// If it looks like a URL, return as-is
+	if (input.find("://") != std::string::npos || input.find("git@") == 0)
+	{
+		return input;
+	}
+	
+	// Check for GitHub shorthand: user/repo
+	if (input.find('/') != std::string::npos && input.find(' ') == std::string::npos)
+	{
+		return "https://github.com/" + input + ".git";
+	}
+	
+	// Return as-is, might be a module name
+	return input;
+}
+
+static bool handle_install_module(const Path& projectRoot, ManifestContext& manifest, 
+								   const std::string& input, const std::string& customName)
+{
+	std::string repoUrl = expand_git_url(input);
+	std::string moduleName = customName.empty() ? extract_module_name(input) : customName;
+	
+	if (moduleName.empty())
+	{
+		g_cli.error("Could not determine module name from: " + input);
+		return false;
+	}
+	
+	// Clone the repository
+	if (!clone_git_module(projectRoot, repoUrl, moduleName))
+	{
+		return false;
+	}
+	
+	// Add to dependencies in Quark.toml
+	std::string key = "dependencies";
+	toml::table& deps = ensure_table(manifest.document, key);
+	
+	// Store the git URL as the version
+	toml::table depInfo;
+	depInfo.insert_or_assign("git", repoUrl);
+	deps.insert_or_assign(moduleName, depInfo);
+	
+	if (!manifest.save())
+	{
+		g_cli.warning("Module installed but failed to update Quark.toml");
+		return true;
+	}
+	
+	return true;
+}
+
 static bool handle_remove_dependency(ManifestContext& manifest, const std::string& name, bool dev)
 {
 	std::string key = dev ? "dev-dependencies" : "dependencies";
@@ -700,16 +844,27 @@ static void print_help()
 	g_cli.println("", MessageType::INFO);
 	g_cli.println("Usage:", MessageType::INFO);
 	g_cli.println("  quark package <command> [options]", MessageType::INFO);
+	g_cli.println("  quark <command> [options]          (shorthand)", MessageType::INFO);
 	g_cli.println("", MessageType::INFO);
 	g_cli.println("Commands:", MessageType::INFO);
 	g_cli.println("  init [path]            Initialize a new Quark project", MessageType::INFO);
 	g_cli.println("  build [--release]      Build the current project", MessageType::INFO);
 	g_cli.println("  run [--release]        Build and run the current project", MessageType::INFO);
 	g_cli.println("  clean                  Remove build artifacts", MessageType::INFO);
-	g_cli.println("  add <name> <version>   Add a dependency", MessageType::INFO);
-	g_cli.println("  remove <name>          Remove a dependency", MessageType::INFO);
+	g_cli.println("  add <repo> [--as name] Install a module from git (e.g., user/repo)", MessageType::INFO);
+	g_cli.println("  remove <name>          Remove a module", MessageType::INFO);
 	g_cli.println("  list                   List declared dependencies", MessageType::INFO);
 	g_cli.println("  help                   Show this help message", MessageType::INFO);
+	g_cli.println("", MessageType::INFO);
+	g_cli.println("Examples:", MessageType::INFO);
+	g_cli.println("  quark add user/discord           # Install from github.com/user/discord", MessageType::INFO);
+	g_cli.println("  quark add user/lib --as mylib    # Install with custom name", MessageType::INFO);
+	g_cli.println("  quark add https://gitlab.com/u/r # Install from full URL", MessageType::INFO);
+	g_cli.println("", MessageType::INFO);
+	g_cli.println("Module imports:", MessageType::INFO);
+	g_cli.println("  import json      # Standard library", MessageType::INFO);
+	g_cli.println("  import discord   # Installed module", MessageType::INFO);
+	g_cli.println("  import mod/sub   # Submodule", MessageType::INFO);
 	g_cli.println("", MessageType::INFO);
 	g_cli.println("Global options:", MessageType::INFO);
 	g_cli.println("  --manifest <path>      Specify an alternate Quark.toml", MessageType::INFO);
@@ -963,13 +1118,24 @@ int run_package_manager_cli(int argc, char** argv, const std::filesystem::path& 
 	if (loweredCommand == "add")
 	{
 		bool dev = false;
+		std::string customName;
 		std::vector<std::string> args;
+		
 		for (size_t i = 0; i < commandArgs.size(); ++i)
 		{
 			std::string_view arg = commandArgs[i];
 			if (arg == "--dev")
 			{
 				dev = true;
+			}
+			else if (arg == "--as")
+			{
+				if (i + 1 >= commandArgs.size())
+				{
+					g_cli.error("--as requires a module name");
+					return 1;
+				}
+				customName = commandArgs[++i];
 			}
 			else if (!arg.empty() && arg[0] == '-')
 			{
@@ -982,13 +1148,35 @@ int run_package_manager_cli(int argc, char** argv, const std::filesystem::path& 
 			}
 		}
 
-		if (args.size() != 2)
+		if (args.empty())
 		{
-			g_cli.error("Usage: quark package add [--dev] <name> <version>");
+			g_cli.error("Usage: quark add <repo> [--as name]");
+			g_cli.info("Examples:");
+			g_cli.info("  quark add user/repo           # GitHub shorthand");
+			g_cli.info("  quark add user/repo --as lib  # Custom module name");
 			return 1;
 		}
 
-		return handle_add_dependency(manifest, args[0], args[1], dev) ? 0 : 1;
+		// If the input looks like a git repo, install it
+		std::string input = args[0];
+		bool looksLikeGit = input.find('/') != std::string::npos || 
+		                    input.find("://") != std::string::npos ||
+		                    input.find("git@") == 0;
+		
+		if (looksLikeGit)
+		{
+			return handle_install_module(manifest.rootDir, manifest, input, customName) ? 0 : 1;
+		}
+		else if (args.size() == 2)
+		{
+			// Legacy: quark add <name> <version>
+			return handle_add_dependency(manifest, args[0], args[1], dev) ? 0 : 1;
+		}
+		else
+		{
+			g_cli.error("Invalid add command. Use: quark add <user/repo> or quark add <name> <version>");
+			return 1;
+		}
 	}
 
 	if (loweredCommand == "remove" || loweredCommand == "rm")

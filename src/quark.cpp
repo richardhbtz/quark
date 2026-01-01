@@ -158,18 +158,31 @@ int main(int argc, char **argv)
     {
         std::string_view firstArg{argv[1]};
         
-                        bool isPackageCommand = false;
+        bool isPackageCommand = false;
         if (!firstArg.empty() && firstArg[0] != '-')
         {
-                        std::string firstArgLower(firstArg);
+            std::string firstArgLower(firstArg);
             std::transform(firstArgLower.begin(), firstArgLower.end(), firstArgLower.begin(), ::tolower);
             
-            if (firstArgLower == "init" || firstArgLower == "build" || 
+            // Check if second argument is a .k file - if so, use compiler not package manager
+            bool hasKFileArg = false;
+            if (argc >= 3) {
+                std::string secondArg{argv[2]};
+                if (secondArg.size() > 2 && secondArg.substr(secondArg.size() - 2) == ".k") {
+                    hasKFileArg = true;
+                }
+            }
+            
+            // "build" and "run" with .k file go to compiler, not package manager
+            if ((firstArgLower == "build" || firstArgLower == "run") && hasKFileArg) {
+                isPackageCommand = false;
+            }
+            else if (firstArgLower == "init" || firstArgLower == "build" || 
                 firstArgLower == "run" || firstArgLower == "clean" ||
                 firstArgLower == "add" || firstArgLower == "remove" ||
                 firstArgLower == "update" || firstArgLower == "test" ||
                 firstArgLower == "publish" || firstArgLower == "install" ||
-                                firstArgLower == "package" || firstArgLower == "pkg" || firstArgLower == "pm")
+                firstArgLower == "package" || firstArgLower == "pkg" || firstArgLower == "pm")
             {
                 isPackageCommand = true;
             }
