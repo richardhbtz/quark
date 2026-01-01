@@ -1140,7 +1140,21 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
                 }
                 next(); // consume ')'
                 
-                lhs = std::make_unique<MethodCallExpr>(std::move(lhs), fieldName, std::move(args));
+                // Check if lhs is a simple identifier (potential static call)
+                // But NOT for "this" - that should always be a method call
+                if (auto* varExpr = dynamic_cast<VariableExprAST*>(lhs.get())) {
+                    if (varExpr->name == "this") {
+                        lhs = std::make_unique<MethodCallExpr>(std::move(lhs), fieldName, std::move(args));
+                    } else {
+                        auto staticCall = std::make_unique<StaticCallExpr>(varExpr->name, fieldName);
+                        staticCall->args = std::move(args);
+                        staticCall->location = varExpr->location;
+                        lhs = std::move(staticCall);
+                    }
+                } else {
+                    // It's an instance method call on a complex expression
+                    lhs = std::make_unique<MethodCallExpr>(std::move(lhs), fieldName, std::move(args));
+                }
             } else {
                 // Regular field access
                 lhs = std::make_unique<MemberAccessExpr>(std::move(lhs), fieldName);
@@ -1319,11 +1333,6 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
                 if (cur_.kind == tok_brace_open)
         {
             return parseStructLiteral(idName);
-        }
-
-                if (cur_.kind == tok_arrow)
-        {
-            return parseStaticCall(idName);
         }
 
         // Function call
@@ -1667,10 +1676,10 @@ std::unique_ptr<ImplStmt> Parser::parseImpl()
 
 std::unique_ptr<StaticCallExpr> Parser::parseStaticCall(const std::string &structName)
 {
-    next(); // consume '->'
+    next(); // consume '.'
     
     if (cur_.kind != tok_identifier)
-        throw ParseError("expected method name after '->'", cur_.location);
+        throw ParseError("expected method name after '.'", cur_.location);
     
     std::string methodName = cur_.text;
     next();
@@ -1701,7 +1710,7 @@ std::unique_ptr<StaticCallExpr> Parser::parseStaticCall(const std::string &struc
     next();
     
     if (verbose_)
-        printf("[parser] parsed static call: %s->%s with %zu args\n", structName.c_str(), methodName.c_str(), staticCall->args.size());
+        printf("[parser] parsed static call: %s.%s with %zu args\n", structName.c_str(), methodName.c_str(), staticCall->args.size());
     
     return staticCall;
 }

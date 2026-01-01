@@ -42,7 +42,7 @@ struct Rectangle {
 
 int main() {
     // Create struct using static constructor
-    var p = Point->new(10, 20);
+    var p = Point.new(10, 20);
     print("{}", p.to_string());
     print("{}", format("Sum: {}", p.sum()));
 
@@ -51,7 +51,7 @@ int main() {
     print("{}", format("P2 sum: {}", p2.sum()));
 
     // Rectangle example
-    var rect = Rectangle->new(10, 5);
+    var rect = Rectangle.new(10, 5);
     print("{}", format("Area: {}", rect.area()));
     print("{}", format("Perimeter: {}", rect.perimeter()));
 

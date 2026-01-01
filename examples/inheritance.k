@@ -50,8 +50,8 @@ struct Cat : Animal {
 }
 
 int main() {
-    var dog = Dog->new("Buddy", 3, "Golden Retriever");
-    var cat = Cat->new("Whiskers", 5, true);
+    var dog = Dog.new("Buddy", 3, "Golden Retriever");
+    var cat = Cat.new("Whiskers", 5, true);
 
     print("{}", dog.get_info());
     print("{}", format("Breed: {}", dog.get_breed()));

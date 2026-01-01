@@ -49,8 +49,8 @@ int main() {
     int x = 10; int* px = &x; print("{}", x); *px = 25; print("{}", x); print("{}", *px);
 
     print("{}", "--- STRUCTS & METHODS ---");
-    var child = Child->new(1,2); print("{}", child.hello()); print("{}", child.only());
-    var cbox = Box->new(99); print("{}", cbox.get());
+    var child = Child.new(1,2); print("{}", child.hello()); print("{}", child.only());
+    var cbox = Box.new(99); print("{}", cbox.get());
 
     print("{}", "--- LOOPS & RANGE ---");
     for (i in 0..5) { print("{}", i); }
@@ -60,7 +60,7 @@ int main() {
     int seven = 7; var f = (float)seven; print("{}", format("int={} as_float={}", seven, f));
 
     print("{}", "--- JSON LIBRARY ---");
-    var jsonStr: str = "{\"a\":1, \"c\":{\"d\":\"x\"}}"; var js = Json->new(); var extracted = js.get(jsonStr, "c.d"); print("{}", extracted);
+    var jsonStr: str = "{\"a\":1, \"c\":{\"d\":\"x\"}}"; var js = Json.new(); var extracted = js.get(jsonStr, "c.d"); print("{}", extracted);
 
     print("{}", "--- MATCH (STUB) ---");
     // match stub omitted due to parser limitations; simulate success output

@@ -30,7 +30,7 @@ struct Child : Base {
 }
 
 int main() {
-    var c = Child->new(1, 2);
+    var c = Child.new(1, 2);
     print("{}", c.hello());
     print("{}", c.only());
     ret 0;

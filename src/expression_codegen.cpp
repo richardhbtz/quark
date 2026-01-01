@@ -731,19 +731,18 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         if (verbose_)
             printf("[codegen] inferType: checking static method call '%s::%s'\n", staticCall->structName.c_str(), staticCall->methodName.c_str());
         
-                        std::string actualStructType = staticCall->structName;
+        std::string actualStructType = staticCall->structName;
         
-                auto varIt = variableTypes_.find(staticCall->structName);
+        auto varIt = variableTypes_.find(staticCall->structName);
         if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Struct) {
-                        actualStructType = varIt->second.structName;
+            actualStructType = varIt->second.structName;
             if (verbose_)
                 printf("[codegen] inferType: resolved variable '%s' to struct type '%s'\n", 
                        staticCall->structName.c_str(), actualStructType.c_str());
         } else if (g_named_types_) {
-            // Check global variables
             auto globalIt = g_named_types_->find(staticCall->structName);
             if (globalIt != g_named_types_->end()) {
-                                if (g_struct_types_) {
+                if (g_struct_types_) {
                     for (const auto& structPair : *g_struct_types_) {
                         if (structPair.second == globalIt->second) {
                             actualStructType = structPair.first;
@@ -757,7 +756,36 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             }
         }
         
-                std::string mangledName = actualStructType + "::" + staticCall->methodName;
+        if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Array) {
+            if (staticCall->methodName == "length" || staticCall->methodName == "count") {
+                return TypeInfo(QuarkType::Int, staticCall->location);
+            }
+            if (staticCall->methodName == "slice" || staticCall->methodName == "push") {
+                return varIt->second;
+            }
+            if (staticCall->methodName == "pop" || staticCall->methodName == "free") {
+                return TypeInfo(QuarkType::Void, staticCall->location);
+            }
+        }
+        
+        if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::String) {
+            if (staticCall->methodName == "length") {
+                return TypeInfo(QuarkType::Int, staticCall->location);
+            }
+            if (staticCall->methodName == "slice" || staticCall->methodName == "replace") {
+                return TypeInfo(QuarkType::String, staticCall->location);
+            }
+            if (staticCall->methodName == "find") {
+                return TypeInfo(QuarkType::Boolean, staticCall->location);
+            }
+            if (staticCall->methodName == "split") {
+                TypeInfo arrType(QuarkType::Array, staticCall->location);
+                arrType.elementType = QuarkType::String;
+                return arrType;
+            }
+        }
+        
+        std::string mangledName = actualStructType + "::" + staticCall->methodName;
         auto it = functionTypes_.find(mangledName);
         if (it != functionTypes_.end()) {
             if (verbose_)
@@ -3780,16 +3808,120 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
     if (verbose_)
         printf("[codegen] generating static method call %s::%s\n", staticCall->structName.c_str(), staticCall->methodName.c_str());
     
+    auto varIt = variableTypes_.find(staticCall->structName);
+    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Array) {
+        if (verbose_)
+            printf("[codegen] genStaticCall: treating as array method call on '%s'\n", staticCall->structName.c_str());
+        
+        VariableExprAST varExpr(staticCall->structName);
+        LLVMValueRef objectValue = genExpr(&varExpr);
+        
+        std::vector<LLVMValueRef> args;
+        LLVMValueRef asI8 = LLVMBuildPointerCast(builder_, objectValue, int8ptr_t_, "arr_i8");
+        
+        if (staticCall->methodName == "count" || staticCall->methodName == "length") {
+            args.push_back(asI8);
+            return builtinFunctions_->generateBuiltinCall("array_length", args);
+        }
+        if (staticCall->methodName == "push") {
+            args.push_back(asI8);
+            if (staticCall->args.size() != 2)
+                throw CodeGenError("array.push expects 2 arguments: &elem, elemSize", staticCall->location);
+            LLVMValueRef elemPtr = genExpr(staticCall->args[0].get());
+            LLVMValueRef elemPtrI8 = LLVMBuildPointerCast(builder_, elemPtr, int8ptr_t_, "elem_i8");
+            LLVMValueRef elemSize = genExprInt(staticCall->args[1].get());
+            args.push_back(elemPtrI8);
+            args.push_back(elemSize);
+            return builtinFunctions_->generateBuiltinCall("array_push", args);
+        }
+        if (staticCall->methodName == "slice") {
+            args.push_back(asI8);
+            if (staticCall->args.size() != 3)
+                throw CodeGenError("array.slice expects 3 arguments: start, end, elemSize", staticCall->location);
+            LLVMValueRef start = genExprInt(staticCall->args[0].get());
+            LLVMValueRef end = genExprInt(staticCall->args[1].get());
+            LLVMValueRef elemSize = genExprInt(staticCall->args[2].get());
+            args.push_back(start);
+            args.push_back(end);
+            args.push_back(elemSize);
+            return builtinFunctions_->generateBuiltinCall("array_slice", args);
+        }
+        if (staticCall->methodName == "pop") {
+            args.push_back(asI8);
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("array.pop expects 1 argument: elemSize", staticCall->location);
+            LLVMValueRef elemSize = genExprInt(staticCall->args[0].get());
+            args.push_back(elemSize);
+            return builtinFunctions_->generateBuiltinCall("array_pop", args);
+        }
+        if (staticCall->methodName == "free") {
+            args.push_back(asI8);
+            return builtinFunctions_->generateBuiltinCall("array_free", args);
+        }
+        throw std::runtime_error("Unknown array method: " + staticCall->methodName);
+    }
+    
+    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::String) {
+        if (verbose_)
+            printf("[codegen] genStaticCall: treating as string method call on '%s'\n", staticCall->structName.c_str());
+        
+        VariableExprAST varExpr(staticCall->structName);
+        LLVMValueRef objectValue = genExpr(&varExpr);
+        
+        std::vector<LLVMValueRef> args;
+        args.push_back(objectValue);
+        
+        if (staticCall->methodName == "length") {
+            return builtinFunctions_->generateBuiltinCall("str_len", args);
+        }
+        if (staticCall->methodName == "slice") {
+            if (staticCall->args.size() != 2)
+                throw CodeGenError("string.slice expects 2 arguments: start, end", staticCall->location);
+            LLVMValueRef start = genExprInt(staticCall->args[0].get());
+            LLVMValueRef end = genExprInt(staticCall->args[1].get());
+            args.push_back(start);
+            args.push_back(end);
+            return builtinFunctions_->generateBuiltinCall("str_slice", args);
+        }
+        if (staticCall->methodName == "find") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("string.find expects 1 argument: needle", staticCall->location);
+            LLVMValueRef needle = genExpr(staticCall->args[0].get());
+            args.push_back(needle);
+            return builtinFunctions_->generateBuiltinCall("str_find", args);
+        }
+        if (staticCall->methodName == "replace") {
+            if (staticCall->args.size() != 2)
+                throw CodeGenError("string.replace expects 2 arguments: old, new", staticCall->location);
+            LLVMValueRef oldStr = genExpr(staticCall->args[0].get());
+            LLVMValueRef newStr = genExpr(staticCall->args[1].get());
+            args.push_back(oldStr);
+            args.push_back(newStr);
+            return builtinFunctions_->generateBuiltinCall("str_replace", args);
+        }
+        if (staticCall->methodName == "split") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("string.split expects 1 argument: delimiter", staticCall->location);
+            LLVMValueRef delim = genExpr(staticCall->args[0].get());
+            args.push_back(delim);
+            return builtinFunctions_->generateBuiltinCall("str_split", args);
+        }
+        throw std::runtime_error("Unknown string method: " + staticCall->methodName);
+    }
+    
             std::string actualStructType = staticCall->structName;
     
-        auto varIt = variableTypes_.find(staticCall->structName);
-    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Struct) {
+        if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Struct) {
                 actualStructType = varIt->second.structName;
         if (verbose_)
             printf("[codegen] genStaticCall: resolved variable '%s' to struct type '%s'\n", 
                    staticCall->structName.c_str(), actualStructType.c_str());
+    } else if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Pointer) {
+                actualStructType = varIt->second.structName;
+        if (verbose_)
+            printf("[codegen] genStaticCall: resolved pointer variable '%s' to struct type '%s'\n", 
+                   staticCall->structName.c_str(), actualStructType.c_str());
     } else if (g_named_types_) {
-        // Check global variables
         auto globalIt = g_named_types_->find(staticCall->structName);
         if (globalIt != g_named_types_->end()) {
                         if (g_struct_types_) {
@@ -3806,11 +3938,26 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
         }
     }
     
-        std::string mangledName = actualStructType + "::" + staticCall->methodName;
+        std::string targetStructType = actualStructType;
+    std::string mangledName = targetStructType + "::" + staticCall->methodName;
     
         auto it = g_function_map_->find(mangledName);
+    while (it == g_function_map_->end() && g_struct_defs_) {
+        auto defIt = g_struct_defs_->find(targetStructType);
+        if (defIt == g_struct_defs_->end()) {
+            break;
+        }
+        const StructDefStmt* def = defIt->second;
+        if (def->parentName.empty()) {
+            break;
+        }
+        targetStructType = def->parentName;
+        mangledName = targetStructType + "::" + staticCall->methodName;
+        it = g_function_map_->find(mangledName);
+    }
+    
     if (it == g_function_map_->end()) {
-        throw std::runtime_error("Static method '" + mangledName + "' not found");
+        throw std::runtime_error("Static method '" + actualStructType + "::" + staticCall->methodName + "' not found (and no inherited method found)");
     }
     
     LLVMValueRef function = it->second;
@@ -3824,7 +3971,7 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
     
         if (functionTypes_.find(mangledName) != functionTypes_.end()) {
         TypeInfo returnType = functionTypes_[mangledName];
-        if (returnType.type == QuarkType::Struct && returnType.structName == actualStructType) {
+        if (returnType.type == QuarkType::Struct && returnType.structName == targetStructType) {
             isConstructor = true;
             if (verbose_)
                 printf("[codegen] genStaticCall: detected constructor method '%s'\n", mangledName.c_str());
@@ -3850,8 +3997,18 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
             throw std::runtime_error("Static call requires a struct instance variable name (not type) to provide 'self'");
         }
         args.push_back(selfPtr);
-                LLVMValueRef dynNameStatic = LLVMBuildGlobalStringPtr(builder_, actualStructType.c_str(), "dyn_type_name");
-        args.push_back(dynNameStatic);
+        
+        LLVMValueRef dynName = nullptr;
+        if (staticCall->structName == "this") {
+            auto dynIt = g_named_values_->find("__dyn_type_name");
+            if (dynIt != g_named_values_->end()) {
+                dynName = LLVMBuildLoad2(builder_, int8ptr_t_, dynIt->second, "dyn_type_name.load");
+            }
+        }
+        if (!dynName) {
+            dynName = LLVMBuildGlobalStringPtr(builder_, actualStructType.c_str(), "dyn_type_name");
+        }
+        args.push_back(dynName);
     }
     
         auto funcTypesIt = g_function_param_types_->find(mangledName);

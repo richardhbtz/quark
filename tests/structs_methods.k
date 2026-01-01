@@ -40,9 +40,9 @@ struct Professional : Human {
 }
 
 int main() {
-    var human = Human->new("John", 25);
+    var human = Human.new("John", 25);
     print("{}", human.greet());
-    var prof = Professional->new("Alice", 30, "Engineer", 100000);
+    var prof = Professional.new("Alice", 30, "Engineer", 100000);
     print("{}", prof.to_string());
     print("{}", format("Working: {}", prof.work()));
     ret 0;

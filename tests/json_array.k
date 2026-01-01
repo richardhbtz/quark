@@ -7,7 +7,7 @@
 // EXPECT: Nested array length: 3
 // EXPECT: Nested value 0: 10
 int main() {
-    var json = Json->new();
+    var json = Json.new();
     
     // Test JSON with an array
     var test_json = "{\"items\": [\"apple\", \"banana\", \"cherry\"], \"count\": 3}";

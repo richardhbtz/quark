@@ -3,8 +3,8 @@
 
 //EXPECT: name=Quark|version=2|color=blue|count=3|json={"features":{"color":"blue","count":3},"name":"Quark","version":2}
 int main() {
-    var doc = Toml->new();
-    var js = Json->new();
+    var doc = Toml.new();
+    var js = Json.new();
     doc.load_string("name = \"Quark\"\nversion = 1\n[features]\ncolor = \"red\"\ncount = 2\n");
 
     doc.set_int("version", 2);

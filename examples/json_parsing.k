@@ -4,7 +4,7 @@
 
 int main() {
     // Create JSON handler
-    var js = Json->new();
+    var js = Json.new();
 
     // Parse JSON and extract values
     var json_str: str = "{\"name\":\"Alice\",\"age\":30,\"city\":\"Paris\"}";

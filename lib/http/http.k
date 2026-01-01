@@ -70,7 +70,7 @@ struct Http {
 }
 
 // Example usage (advanced):
-// var http = Http->new();
+// var http = Http.new();
 // var headers: str[] = { "Accept: application/json", "User-Agent: QuarkClient/1.0" };
 // var body: str = http.get_with("https://httpbin.org/get", headers, 10);
 // print("Status {} BodyLen {}", http.status(), body.length());

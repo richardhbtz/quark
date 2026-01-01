@@ -49,7 +49,7 @@ struct Point {
     }
 }
 
-var p = Point->new(1, 2);  // Static method call
+var p = Point.new(1, 2);  // Static method call
 
 // Inheritance
 struct Child : Parent {

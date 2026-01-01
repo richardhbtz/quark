@@ -4,7 +4,7 @@
 #include "lib/ws/ws.k"
 
 int main() {
-    var ws = Ws->new();
+    var ws = Ws.new();
     var ok = ws.connect("wss://ws.ifelse.io");
     if (!ok) {
         print("connect failed: {}", ws.last_error());

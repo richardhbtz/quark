@@ -4,7 +4,7 @@
 
 int main() {
     // Create HTTP client
-    var http = Http->new();
+    var http = Http.new();
 
     // Make a GET request
     var response = http.get("https://httpbin.org/get");

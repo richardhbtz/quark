@@ -48,7 +48,7 @@ struct Ws {
 }
 
 // Example usage:
-// var ws = Ws->new();
+// var ws = Ws.new();
 // var ok = ws.connect("wss://echo.websocket.org", {});
 // if ok { ws.send("hello"); var msg = ws.recv(5000); print("{}", msg); ws.close(1000, "bye"); }
 
