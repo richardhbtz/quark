@@ -42,6 +42,9 @@ void ws_clear_last_error(int handle);
 // Free strings returned by ws_recv().
 void ws_free(char* s);
 
+// Get current time in milliseconds (monotonic clock for timing purposes).
+int time_ms();
+
 #ifdef __cplusplus
 }
 #endif

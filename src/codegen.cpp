@@ -724,6 +724,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                     argstrs.emplace_back("quark_toml.lib");
                     argstrs.emplace_back("quark_ws.lib");
                     argstrs.emplace_back("quark_io.lib");
+                    argstrs.emplace_back("quark_map.lib");
                                     }
                 else
                 {
@@ -832,6 +833,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 argstrs.emplace_back("build/libquark_toml.a");
                 argstrs.emplace_back("build/libquark_ws.a");
                 argstrs.emplace_back("build/libquark_io.a");
+                argstrs.emplace_back("build/libquark_map.a");
                 argstrs.emplace_back("-lixwebsocket");
                 argstrs.emplace_back("-lcurl");
                 argstrs.emplace_back("-lz");
@@ -938,6 +940,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 argstrs.emplace_back(tmpObjPath);
                 argstrs.emplace_back("build/libquark_io.a");
                 argstrs.emplace_back("build/libquark_toml.a");
+                argstrs.emplace_back("build/libquark_map.a");
                 argstrs.emplace_back("-lc");
                 argstrs.emplace_back("-lm");
 

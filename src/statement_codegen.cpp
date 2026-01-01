@@ -612,6 +612,11 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             varType = int32_t_;
             val = expressionCodeGen_->genExprInt(vdecl->init.get());
             break;
+        case QuarkType::Map:
+            actualType = "map";
+            varType = int8ptr_t_;
+            val = expressionCodeGen_->genExpr(vdecl->init.get());
+            break;
         case QuarkType::Float:
             actualType = "float";
             varType = float_t_;

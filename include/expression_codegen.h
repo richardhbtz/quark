@@ -77,6 +77,9 @@ public:
     LLVMValueRef genArrayLiteral(ArrayLiteralExpr *arrayLiteral);
     LLVMValueRef genArrayAccess(ArrayAccessExpr *arrayAccess);
     
+    // Map expression generation
+    LLVMValueRef genMapLiteral(MapLiteralExpr *mapLiteral);
+    
     // Helper methods for type mapping (made public for use in statement codegen)
     LLVMTypeRef quarkTypeToLLVMType(QuarkType type);
     LLVMTypeRef mapPointerType(const std::string& typeName);

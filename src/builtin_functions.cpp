@@ -22,6 +22,7 @@ void BuiltinFunctions::registerAllBuiltins() {
     registerStringFunctions();
     registerArrayFunctions();
     registerMathFunctions();
+    registerMapFunctions();
     registerFormatFunctions();
     // sleep(ms: int) -> void (cross-platform)
     registerBuiltin("sleep", void_t_, {int32_t_}, /*isVariadic*/ false,
@@ -578,6 +579,104 @@ void BuiltinFunctions::registerMathFunctions() {
         });
 }
 
+void BuiltinFunctions::registerMapFunctions() {
+    auto getOrDeclare = [this](const char* name, LLVMTypeRef fnTy) {
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, name);
+        if (!fn) {
+            fn = LLVMAddFunction(module_, name, fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+        return fn;
+    };
+
+    // quark_map* quark_map_new();
+    {
+        LLVMTypeRef fnTy = LLVMFunctionType(int8ptr_t_, nullptr, 0, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_new", fnTy);
+        registerBuiltin("map_new", int8ptr_t_, {}, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                (void)args;
+                return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, nullptr, 0, "map_new_call");
+            });
+    }
+
+    // void quark_map_free(quark_map* m)
+    {
+        LLVMTypeRef params[] = { int8ptr_t_ };
+        LLVMTypeRef fnTy = LLVMFunctionType(void_t_, params, 1, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_free", fnTy);
+        registerBuiltin("map_free", void_t_, { int8ptr_t_ }, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                LLVMValueRef callArgs[] = { args.at(0) };
+                LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, callArgs, 1, "");
+                return (LLVMValueRef)nullptr;
+            });
+    }
+
+    // void quark_map_set(quark_map* m, const char* key, const char* value)
+    {
+        LLVMTypeRef params[] = { int8ptr_t_, int8ptr_t_, int8ptr_t_ };
+        LLVMTypeRef fnTy = LLVMFunctionType(void_t_, params, 3, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_set", fnTy);
+        registerBuiltin("map_set", void_t_, { int8ptr_t_, int8ptr_t_, int8ptr_t_ }, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                LLVMValueRef callArgs[] = { args.at(0), args.at(1), args.at(2) };
+                LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, callArgs, 3, "");
+                return (LLVMValueRef)nullptr;
+            });
+    }
+
+    // const char* quark_map_get(quark_map* m, const char* key)
+    {
+        LLVMTypeRef params[] = { int8ptr_t_, int8ptr_t_ };
+        LLVMTypeRef fnTy = LLVMFunctionType(int8ptr_t_, params, 2, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_get", fnTy);
+        registerBuiltin("map_get", int8ptr_t_, { int8ptr_t_, int8ptr_t_ }, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                LLVMValueRef callArgs[] = { args.at(0), args.at(1) };
+                return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, callArgs, 2, "map_get_call");
+            });
+    }
+
+    // int quark_map_has(quark_map* m, const char* key)
+    {
+        LLVMTypeRef params[] = { int8ptr_t_, int8ptr_t_ };
+        LLVMTypeRef fnTy = LLVMFunctionType(int32_t_, params, 2, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_has", fnTy);
+        registerBuiltin("map_has", bool_t_, { int8ptr_t_, int8ptr_t_ }, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                LLVMValueRef callArgs[] = { args.at(0), args.at(1) };
+                LLVMValueRef raw = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, callArgs, 2, "map_has_raw");
+                return LLVMBuildICmp(builder_, LLVMIntNE, raw, LLVMConstInt(int32_t_, 0, 0), "map_has");
+            });
+    }
+
+    // int quark_map_len(quark_map* m)
+    {
+        LLVMTypeRef params[] = { int8ptr_t_ };
+        LLVMTypeRef fnTy = LLVMFunctionType(int32_t_, params, 1, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_len", fnTy);
+        registerBuiltin("map_len", int32_t_, { int8ptr_t_ }, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                LLVMValueRef callArgs[] = { args.at(0) };
+                return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, callArgs, 1, "map_len_call");
+            });
+    }
+
+    // int quark_map_remove(quark_map* m, const char* key)
+    {
+        LLVMTypeRef params[] = { int8ptr_t_, int8ptr_t_ };
+        LLVMTypeRef fnTy = LLVMFunctionType(int32_t_, params, 2, 0);
+        LLVMValueRef target = getOrDeclare("quark_map_remove", fnTy);
+        registerBuiltin("map_remove", bool_t_, { int8ptr_t_, int8ptr_t_ }, /*isVariadic*/ false,
+            [this, target](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
+                LLVMValueRef callArgs[] = { args.at(0), args.at(1) };
+                LLVMValueRef raw = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(target), target, callArgs, 2, "map_remove_raw");
+                return LLVMBuildICmp(builder_, LLVMIntNE, raw, LLVMConstInt(int32_t_, 0, 0), "map_remove");
+            });
+    }
+}
+
 void BuiltinFunctions::registerFormatFunctions() {
                 registerBuiltin("format", int8ptr_t_, {}, /*isVariadic*/ true,
         [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) {
@@ -644,6 +743,27 @@ void BuiltinFunctions::registerTypesWithExpressionCodeGen(ExpressionCodeGen* exp
         // Special handling for str_split which returns str[]
         if (name == "str_split") {
             exprGen->declareFunctionType(name, QuarkType::Array, SourceLocation(), QuarkType::String, 0);
+            continue;
+        }
+
+        if (name == "map_new") {
+            exprGen->declareFunctionType(name, QuarkType::Map, SourceLocation());
+            continue;
+        }
+        if (name == "map_get") {
+            exprGen->declareFunctionType(name, QuarkType::String, SourceLocation());
+            continue;
+        }
+        if (name == "map_len") {
+            exprGen->declareFunctionType(name, QuarkType::Int, SourceLocation());
+            continue;
+        }
+        if (name == "map_has") {
+            exprGen->declareFunctionType(name, QuarkType::Boolean, SourceLocation());
+            continue;
+        }
+        if (name == "map_set" || name == "map_remove" || name == "map_free") {
+            exprGen->declareFunctionType(name, QuarkType::Void, SourceLocation());
             continue;
         }
         

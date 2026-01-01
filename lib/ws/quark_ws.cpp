@@ -229,5 +229,14 @@ void ws_free(char* s) {
 	if (s) std::free(s);
 }
 
+int time_ms() {
+	// Return milliseconds since first call (process-relative monotonic time).
+	// This avoids wrapping issues and stays within signed 32-bit range for ~24 days.
+	static auto start = std::chrono::steady_clock::now();
+	auto now = std::chrono::steady_clock::now();
+	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+	return static_cast<int>(ms);
+}
+
 } // extern "C"
 

@@ -69,6 +69,13 @@ var arr = [1, 2, 3];
 print("{}", arr.length());
 var slice = arr.slice(0, 2, 1);
 
+// Maps (dictionaries/hashmaps)
+var m = map_new();
+map_set(m, "key", "value");
+var val = map_get(m, "key");
+if (map_has(m, "key")) { /* ... */ }
+map_free(m);
+
 // Pointers
 int* ptr = &x;
 *ptr = 10;
@@ -157,6 +164,7 @@ lto = true
 | `quark_ws` | WebSocket support via IXWebSocket |
 | `quark_toml` | TOML configuration parsing |
 | `quark_io` | File and console helpers |
+| `quark_map` | String-keyed maps (dictionaries/hashmaps) |
 
 ## � Examples
 
@@ -175,6 +183,7 @@ The `examples/` folder contains sample programs demonstrating Quark's features:
 | [`pointers.k`](examples/pointers.k) | Pointer declaration, dereferencing, and manipulation |
 | [`c_interop.k`](examples/c_interop.k) | Calling C library functions |
 | [`math.k`](examples/math.k) | Math builtins and type casting |
+| [`map.k`](examples/map.k) | Maps (dictionaries/hashmaps) with key-value storage |
 | [`http_request.k`](examples/http_request.k) | HTTP requests with the built-in HTTP library |
 | [`json_parsing.k`](examples/json_parsing.k) | JSON parsing with the built-in JSON library |
 

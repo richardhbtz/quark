@@ -86,6 +86,13 @@ void SemanticAnalyzer::registerBuiltinFunctions() {
     addBuiltin("format", "str", {}, true);
     addBuiltin("to_string", "str", {}, true);
     addBuiltin("to_int", "int", {}, true);
+        addBuiltin("map_new", "map", {}, false);
+        addBuiltin("map_free", "void", {{"m", "map"}}, false);
+        addBuiltin("map_set", "void", {{"m", "map"}, {"key", "str"}, {"value", "str"}}, false);
+        addBuiltin("map_get", "str", {{"m", "map"}, {"key", "str"}}, false);
+        addBuiltin("map_has", "bool", {{"m", "map"}, {"key", "str"}}, false);
+        addBuiltin("map_len", "int", {{"m", "map"}}, false);
+        addBuiltin("map_remove", "bool", {{"m", "map"}, {"key", "str"}}, false);
     addBuiltin("str_len", "int", {{"s", "str"}}, false);
     addBuiltin("str_slice", "str", {{"s", "str"}, {"start", "int"}, {"end", "int"}}, false);
     addBuiltin("str_concat", "str", {{"a", "str"}, {"b", "str"}}, false);
@@ -782,6 +789,10 @@ TypeInfo SemanticAnalyzer::analyzeExpr(ExprAST* expr) {
         return analyzeArrayLiteral(arrayLit);
     }
     
+    if (auto* mapLit = dynamic_cast<MapLiteralExpr*>(expr)) {
+        return analyzeMapLiteral(mapLit);
+    }
+    
     if (auto* cast = dynamic_cast<CastExpr*>(expr)) {
         return analyzeCast(cast);
     }
@@ -992,17 +1003,28 @@ TypeInfo SemanticAnalyzer::analyzeArrayAccess(ArrayAccessExpr* expr) {
     TypeInfo arrayType = analyzeExpr(expr->array.get());
     
     if (arrayType.type != QuarkType::Array && arrayType.type != QuarkType::Pointer &&
-        arrayType.type != QuarkType::String) {
-        error("subscript operator requires array, pointer, or string type", expr->location, "E116");
+        arrayType.type != QuarkType::String && arrayType.type != QuarkType::Map) {
+        error("subscript operator requires array, pointer, string, or map type", expr->location, "E116");
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
     
+    // For maps, index must be string; for arrays/pointers, index must be int
     TypeInfo indexType = analyzeExpr(expr->index.get());
-    if (indexType.type != QuarkType::Int) {
-        error("array index must be an integer", expr->location, "E117");
+    if (arrayType.type == QuarkType::Map) {
+        if (indexType.type != QuarkType::String) {
+            error("map index must be a string", expr->location, "E117");
+        }
+    } else {
+        if (indexType.type != QuarkType::Int) {
+            error("array index must be an integer", expr->location, "E117");
+        }
     }
     
     if (arrayType.type == QuarkType::String) {
+        return TypeInfo(QuarkType::String, expr->location);
+    }
+    
+    if (arrayType.type == QuarkType::Map) {
         return TypeInfo(QuarkType::String, expr->location);
     }
     
@@ -1155,6 +1177,23 @@ TypeInfo SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralExpr* expr) {
     return arrayType;
 }
 
+TypeInfo SemanticAnalyzer::analyzeMapLiteral(MapLiteralExpr* expr) {
+    // For each key-value pair, verify they are strings
+    for (const auto& pair : expr->pairs) {
+        TypeInfo keyType = analyzeExpr(pair.first.get());
+        if (keyType.type != QuarkType::String) {
+            error("map keys must be strings", pair.first->location, "E141");
+        }
+        
+        TypeInfo valueType = analyzeExpr(pair.second.get());
+        if (valueType.type != QuarkType::String) {
+            error("map values must be strings", pair.second->location, "E142");
+        }
+    }
+    
+    return TypeInfo(QuarkType::Map, expr->location);
+}
+
 TypeInfo SemanticAnalyzer::analyzeCast(CastExpr* expr) {
     analyzeExpr(expr->operand.get());
     return resolveType(expr->targetTypeName);
@@ -1227,6 +1266,7 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string& typeName) {
     if (typeName == "float") return TypeInfo(QuarkType::Float);
     if (typeName == "double") return TypeInfo(QuarkType::Double);
     if (typeName == "str") return TypeInfo(QuarkType::String);
+    if (typeName == "map") return TypeInfo(QuarkType::Map);
     if (typeName == "bool") return TypeInfo(QuarkType::Boolean);
     if (typeName == "void") return TypeInfo(QuarkType::Void);
     
@@ -1263,6 +1303,7 @@ std::string SemanticAnalyzer::typeToString(const TypeInfo& type) {
         case QuarkType::Float: return "float";
         case QuarkType::Double: return "double";
         case QuarkType::String: return "str";
+        case QuarkType::Map: return "map";
         case QuarkType::Boolean: return "bool";
         case QuarkType::Void: return "void";
         case QuarkType::Struct: return type.structName;

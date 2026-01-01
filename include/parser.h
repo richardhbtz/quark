@@ -288,6 +288,13 @@ struct ArrayLiteralExpr : ExprAST {
         : elements(std::move(elems)) {}
 };
 
+// Map literal expression: ["key1": "value1", "key2": "value2"]
+struct MapLiteralExpr : ExprAST {
+    std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs; // key, value
+    explicit MapLiteralExpr(std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> p)
+        : pairs(std::move(p)) {}
+};
+
 // Array access expression: arr[index]
 struct ArrayAccessExpr : ExprAST {
     std::unique_ptr<ExprAST> array;

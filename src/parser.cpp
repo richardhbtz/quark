@@ -1238,31 +1238,73 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         return e;
     }
 
-    // Array literal: [1, 2, 3, 4]
+    // Array literal: [1, 2, 3, 4] or Map literal: ["key": "value", ...]
     if (cur_.kind == tok_square_bracket_open)
     {
         next(); // consume '['
-        std::vector<std::unique_ptr<ExprAST>> elements;
-        while (cur_.kind != tok_square_bracket_close && cur_.kind != tok_eof)
-        {
-            elements.push_back(parseExpression());
-            if (cur_.kind == tok_comma)
+        
+        // Check if empty
+        if (cur_.kind == tok_square_bracket_close) {
+            next();
+            // Empty array literal
+            if (verbose_)
+                printf("[parser] parsed empty array literal\n");
+            return std::make_unique<ArrayLiteralExpr>(std::vector<std::unique_ptr<ExprAST>>());
+        }
+        
+        // Parse first element to determine if it's array or map
+        auto firstExpr = parseExpression();
+        
+        // Check if this is a map literal (has colon after first expression)
+        if (cur_.kind == tok_colon) {
+            // Map literal
+            next(); // consume ':'
+            auto firstValue = parseExpression();
+            
+            std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs;
+            pairs.emplace_back(std::move(firstExpr), std::move(firstValue));
+            
+            while (cur_.kind == tok_comma) {
+                next(); // consume ','
+                if (cur_.kind == tok_square_bracket_close) break; // trailing comma
+                
+                auto keyExpr = parseExpression();
+                if (cur_.kind != tok_colon) {
+                    throw ParseError("expected ':' after map key", cur_.location);
+                }
+                next(); // consume ':'
+                auto valueExpr = parseExpression();
+                pairs.emplace_back(std::move(keyExpr), std::move(valueExpr));
+            }
+            
+            if (cur_.kind != tok_square_bracket_close) {
+                throw ParseError("expected ']' to close map literal", cur_.location);
+            }
+            next();
+            if (verbose_)
+                printf("[parser] parsed map literal with %zu pairs\n", pairs.size());
+            return std::make_unique<MapLiteralExpr>(std::move(pairs));
+        } else {
+            // Array literal
+            std::vector<std::unique_ptr<ExprAST>> elements;
+            elements.push_back(std::move(firstExpr));
+            
+            while (cur_.kind == tok_comma)
             {
                 next();
+                if (cur_.kind == tok_square_bracket_close) break; // trailing comma
+                elements.push_back(parseExpression());
             }
-            else if (cur_.kind != tok_square_bracket_close)
+            
+            if (cur_.kind != tok_square_bracket_close)
             {
-                throw ParseError("expected ',' or ']' in array literal", cur_.location);
+                throw ParseError("expected ']' to close array literal", cur_.location);
             }
+            next();
+            if (verbose_)
+                printf("[parser] parsed array literal with %zu elements\n", elements.size());
+            return std::make_unique<ArrayLiteralExpr>(std::move(elements));
         }
-        if (cur_.kind != tok_square_bracket_close)
-        {
-            throw ParseError("expected ']' to close array literal", cur_.location);
-        }
-        next();
-        if (verbose_)
-            printf("[parser] parsed array literal with %zu elements\n", elements.size());
-        return std::make_unique<ArrayLiteralExpr>(std::move(elements));
     }
         if (cur_.kind == tok_brace_open)
     {
@@ -1352,6 +1394,7 @@ int Parser::getTokPrecedence()
         if (cur_.kind == tok_semicolon || cur_.kind == tok_paren_close || 
         cur_.kind == tok_comma || cur_.kind == tok_brace_close ||
         cur_.kind == tok_square_bracket_close ||
+        cur_.kind == tok_colon ||
         cur_.kind == tok_fat_arrow ||
         cur_.kind == tok_eof)
         return -1;

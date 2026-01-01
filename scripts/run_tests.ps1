@@ -73,7 +73,7 @@ foreach ($tf in $testFiles) {
         continue
     }
 
-    & $invokeQuark $Quark $tf.FullName $exe
+    & $invokeQuark $Quark $tf.FullName $exe "--no-cache"
 
     if (-not (Test-Path $exe)) {
         Write-Host "[FAIL] $name (compile failed)" -ForegroundColor Red

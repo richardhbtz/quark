@@ -135,6 +135,7 @@ private:
     TypeInfo analyzeUnary(UnaryExprAST* expr);
     TypeInfo analyzeStructLiteral(StructLiteralExpr* expr);
     TypeInfo analyzeArrayLiteral(ArrayLiteralExpr* expr);
+    TypeInfo analyzeMapLiteral(MapLiteralExpr* expr);
     TypeInfo analyzeCast(CastExpr* expr);
     TypeInfo analyzeAddressOf(AddressOfExpr* expr);
     TypeInfo analyzeDereference(DereferenceExpr* expr);

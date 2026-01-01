@@ -9,6 +9,7 @@ enum class QuarkType {
     Float,      // 32-bit floating point
     Double,     // 64-bit floating point  
     String,
+    Map,        // String-keyed map (str -> str)
     Boolean,
     Void,
     Struct,
@@ -74,6 +75,7 @@ public:
         if (typeName == "float") return QuarkType::Float;
         if (typeName == "double") return QuarkType::Double;
         if (typeName == "str") return QuarkType::String;
+        if (typeName == "map") return QuarkType::Map;
         if (typeName == "bool") return QuarkType::Boolean;
         if (typeName == "void") return QuarkType::Void;
         // Handle array types: int[], str[], etc.
@@ -103,6 +105,7 @@ public:
             case QuarkType::Float: return "float";
             case QuarkType::Double: return "double";
             case QuarkType::String: return "str";
+            case QuarkType::Map: return "map";
             case QuarkType::Boolean: return "bool";
             case QuarkType::Void: return "void";
             case QuarkType::Struct: return "struct";

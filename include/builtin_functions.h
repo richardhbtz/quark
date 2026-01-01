@@ -36,6 +36,7 @@ public:
     void registerStringFunctions();
     void registerArrayFunctions();
     void registerMathFunctions();
+    void registerMapFunctions();
     // Register formatting helpers
     void registerFormatFunctions();
     

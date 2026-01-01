@@ -227,6 +227,148 @@ char* qjson_get_string(const char* text, const char* path) {
     return out;
 }
 
+// Get the length of a JSON array at the given path
+int qjson_get_array_length(const char* text, const char* path) {
+    if (!text) return 0;
+    clear_error();
+    json_parse_result_s r{};
+    json_value_s* root = json_parse_ex(text, std::strlen(text), json_parse_flags_default, nullptr, nullptr, &r);
+    if (!root) { set_error_from_result(r); return 0; }
+
+    const json_value_s* cur = root;
+    
+    // Navigate to path if provided
+    if (path && path[0]) {
+        size_t pos = 0; std::string key; bool is_index; size_t idx;
+        while (path[pos]) {
+            if (!parse_path_token(path, pos, key, is_index, idx)) { std::free(root); return 0; }
+            if (is_index) {
+                auto* arr = json_value_as_array((json_value_s*)cur);
+                if (!arr) { std::free(root); return 0; }
+                cur = find_in_array(arr, idx);
+                if (!cur) { std::free(root); return 0; }
+            } else {
+                auto* obj = json_value_as_object((json_value_s*)cur);
+                if (!obj) { std::free(root); return 0; }
+                cur = find_in_object(obj, key.c_str());
+                if (!cur) { std::free(root); return 0; }
+            }
+            if (path[pos] == '.') ++pos;
+        }
+    }
+
+    auto* arr = json_value_as_array((json_value_s*)cur);
+    if (!arr) { std::free(root); return 0; }
+    
+    int count = 0;
+    for (auto* e = arr->start; e; e = e->next) ++count;
+    
+    std::free(root);
+    return count;
+}
+
+// Get an item from a JSON array at the given path by index (returns JSON string)
+char* qjson_get_array_item(const char* text, const char* path, int index) {
+    if (!text || index < 0) return dup_empty();
+    clear_error();
+    json_parse_result_s r{};
+    json_value_s* root = json_parse_ex(text, std::strlen(text), json_parse_flags_default, nullptr, nullptr, &r);
+    if (!root) { set_error_from_result(r); return dup_empty(); }
+
+    const json_value_s* cur = root;
+    
+    // Navigate to path if provided
+    if (path && path[0]) {
+        size_t pos = 0; std::string key; bool is_index; size_t idx;
+        while (path[pos]) {
+            if (!parse_path_token(path, pos, key, is_index, idx)) { std::free(root); return dup_empty(); }
+            if (is_index) {
+                auto* arr = json_value_as_array((json_value_s*)cur);
+                if (!arr) { std::free(root); return dup_empty(); }
+                cur = find_in_array(arr, idx);
+                if (!cur) { std::free(root); return dup_empty(); }
+            } else {
+                auto* obj = json_value_as_object((json_value_s*)cur);
+                if (!obj) { std::free(root); return dup_empty(); }
+                cur = find_in_object(obj, key.c_str());
+                if (!cur) { std::free(root); return dup_empty(); }
+            }
+            if (path[pos] == '.') ++pos;
+        }
+    }
+
+    auto* arr = json_value_as_array((json_value_s*)cur);
+    if (!arr) { std::free(root); return dup_empty(); }
+    
+    cur = find_in_array(arr, (size_t)index);
+    if (!cur) { std::free(root); return dup_empty(); }
+
+    // If it's a string, return unescaped value
+    if (auto* s = json_value_as_string((json_value_s*)cur)) {
+        char* out = dup_unescaped_json_string(s);
+        std::free(root);
+        return out;
+    }
+
+    // Otherwise return serialized JSON
+    size_t out_sz = 0;
+    void* out = json_write_minified(cur, &out_sz);
+    std::free(root);
+    if (!out) return dup_empty();
+    char* s = (char*)std::malloc(out_sz + 1);
+    if (!s) { std::free(out); return dup_empty(); }
+    std::memcpy(s, out, out_sz);
+    s[out_sz] = '\0';
+    std::free(out);
+    return s;
+}
+
+// Get a string item from a JSON array at the given path by index
+char* qjson_get_array_string(const char* text, const char* path, int index) {
+    if (!text || index < 0) return dup_empty();
+    clear_error();
+    json_parse_result_s r{};
+    json_value_s* root = json_parse_ex(text, std::strlen(text), json_parse_flags_default, nullptr, nullptr, &r);
+    if (!root) { set_error_from_result(r); return dup_empty(); }
+
+    const json_value_s* cur = root;
+    
+    // Navigate to path if provided
+    if (path && path[0]) {
+        size_t pos = 0; std::string key; bool is_index; size_t idx;
+        while (path[pos]) {
+            if (!parse_path_token(path, pos, key, is_index, idx)) { std::free(root); return dup_empty(); }
+            if (is_index) {
+                auto* arr = json_value_as_array((json_value_s*)cur);
+                if (!arr) { std::free(root); return dup_empty(); }
+                cur = find_in_array(arr, idx);
+                if (!cur) { std::free(root); return dup_empty(); }
+            } else {
+                auto* obj = json_value_as_object((json_value_s*)cur);
+                if (!obj) { std::free(root); return dup_empty(); }
+                cur = find_in_object(obj, key.c_str());
+                if (!cur) { std::free(root); return dup_empty(); }
+            }
+            if (path[pos] == '.') ++pos;
+        }
+    }
+
+    auto* arr = json_value_as_array((json_value_s*)cur);
+    if (!arr) { std::free(root); return dup_empty(); }
+    
+    cur = find_in_array(arr, (size_t)index);
+    if (!cur) { std::free(root); return dup_empty(); }
+
+    char* out = nullptr;
+    if (auto* s = json_value_as_string((json_value_s*)cur)) {
+        out = dup_unescaped_json_string(s);
+    } else {
+        out = dup_empty();
+    }
+    std::free(root);
+    return out;
+}
+
 const char* qjson_last_error() { return tls_err.msg.c_str(); }
 int qjson_last_error_code() { return tls_err.code; }
 int qjson_last_error_offset() { return tls_err.offset; }

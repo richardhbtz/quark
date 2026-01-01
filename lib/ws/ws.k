@@ -11,6 +11,7 @@ extern "C" {
 	int ws_last_close_code(int);
 	void ws_clear_last_error(int);
 	void ws_free(str);
+	int time_ms(); // Current time in milliseconds (for timing/heartbeats)
 }
 
 struct Ws {

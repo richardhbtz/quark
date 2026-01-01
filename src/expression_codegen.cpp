@@ -420,21 +420,30 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 return TypeInfo(QuarkType::Array, expr->location, "", elementType.type, arrayLiteral->elements.size());
     }
     
-        if (auto *arrayAccess = dynamic_cast<ArrayAccessExpr *>(expr)) {
+    // Map literal
+    if (auto *mapLiteral = dynamic_cast<MapLiteralExpr *>(expr)) {
+        return TypeInfo(QuarkType::Map, expr->location);
+    }
+    
+    // Array/Map access expression: arr[index] or map[key]
+    if (auto *arrayAccess = dynamic_cast<ArrayAccessExpr *>(expr)) {
         TypeInfo arrayType = inferType(arrayAccess->array.get());
         if (arrayType.type == QuarkType::Array) {
             // Return the element type
             return TypeInfo(arrayType.elementType, expr->location);
+        } else if (arrayType.type == QuarkType::Map) {
+            // Map access always returns string
+            return TypeInfo(QuarkType::String, expr->location);
         } else if (arrayType.type == QuarkType::String) {
                         return TypeInfo(QuarkType::Int, expr->location);
         } else {
             auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
                 auto file = sm->getFile(expr->location.filename);
                 if (file) {
-                    throw EnhancedCodeGenError("Cannot index non-array type", expr->location, file->content, ErrorCodes::INVALID_OPERATION, 1);
+                    throw EnhancedCodeGenError("Cannot index non-array/map type", expr->location, file->content, ErrorCodes::INVALID_OPERATION, 1);
                 }
             }
-            throw CodeGenError("Cannot index non-array type", expr->location);
+            throw CodeGenError("Cannot index non-array/map type", expr->location);
         }
     }
 
@@ -671,6 +680,22 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                     return TypeInfo(QuarkType::Array, expr->location, "", QuarkType::String, 0);
                 }
 
+                if (call->callee == "map_new") {
+                    return TypeInfo(QuarkType::Map, expr->location);
+                }
+                if (call->callee == "map_get") {
+                    return TypeInfo(QuarkType::String, expr->location);
+                }
+                if (call->callee == "map_has") {
+                    return TypeInfo(QuarkType::Boolean, expr->location);
+                }
+                if (call->callee == "map_len") {
+                    return TypeInfo(QuarkType::Int, expr->location);
+                }
+                if (call->callee == "map_set" || call->callee == "map_remove" || call->callee == "map_free") {
+                    return TypeInfo(QuarkType::Void, expr->location);
+                }
+
                                 if (bi->returnType == int32_t_) {
                     return TypeInfo(QuarkType::Int, expr->location);
                 } else if (bi->returnType == LLVMFloatTypeInContext(ctx_)) {
@@ -770,6 +795,7 @@ void ExpressionCodeGen::checkTypeCompatibility(QuarkType expected, QuarkType act
         if (IntegerTypeUtils::isFloatingType(t)) return std::string("floating-point");
         switch (t) {
             case QuarkType::String: return "string";
+            case QuarkType::Map: return "map";
             case QuarkType::Boolean: return "boolean";
             case QuarkType::Void: return "void";
             case QuarkType::Array: return "array";
@@ -1136,15 +1162,18 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         return genRange(range);
     }
     
-        if (auto *arrayLiteral = dynamic_cast<ArrayLiteralExpr *>(expr)) {
+    
+    if (auto *arrayLiteral = dynamic_cast<ArrayLiteralExpr *>(expr)) {
         return genArrayLiteral(arrayLiteral);
     }
     
-        if (auto *arrayAccess = dynamic_cast<ArrayAccessExpr *>(expr)) {
-        return genArrayAccess(arrayAccess);
+    if (auto *mapLiteral = dynamic_cast<MapLiteralExpr *>(expr)) {
+        return genMapLiteral(mapLiteral);
     }
     
-    if (auto *b = dynamic_cast<BoolExprAST *>(expr)) {
+    if (auto *arrayAccess = dynamic_cast<ArrayAccessExpr *>(expr)) {
+        return genArrayAccess(arrayAccess);
+    }    if (auto *b = dynamic_cast<BoolExprAST *>(expr)) {
         return LLVMConstInt(bool_t_, b->value ? 1 : 0, 0);
     }
     // Handle null literal - return null pointer (void*)
@@ -3949,6 +3978,7 @@ LLVMTypeRef ExpressionCodeGen::quarkTypeToLLVMType(QuarkType type) {
         case QuarkType::Float: return float_t_;
         case QuarkType::Double: return double_t_;
         case QuarkType::String: return int8ptr_t_;
+        case QuarkType::Map: return int8ptr_t_;
         case QuarkType::Boolean: return bool_t_;
         case QuarkType::Void: return LLVMVoidTypeInContext(ctx_);
         case QuarkType::Pointer: return int8ptr_t_; // Generic pointer type
@@ -4182,28 +4212,83 @@ LLVMValueRef ExpressionCodeGen::genArrayLiteral(ArrayLiteralExpr *arrayLiteral) 
         return dataPtr;
 }
 
+LLVMValueRef ExpressionCodeGen::genMapLiteral(MapLiteralExpr *mapLiteral) {
+    if (verbose_) printf("[codegen] generating map literal with %zu pairs\n", mapLiteral->pairs.size());
+
+    // Call quark_map_new() to create the map
+    LLVMValueRef mapNewFn = LLVMGetNamedFunction(module_, "quark_map_new");
+    if (!mapNewFn) {
+        throw CodeGenError("quark_map_new function not found", mapLiteral->location);
+    }
+    
+    LLVMTypeRef mapNewTy = LLVMGlobalGetValueType(mapNewFn);
+    LLVMValueRef mapPtr = LLVMBuildCall2(builder_, mapNewTy, mapNewFn, nullptr, 0, "map_literal");
+    
+    // Get quark_map_set function
+    LLVMValueRef mapSetFn = LLVMGetNamedFunction(module_, "quark_map_set");
+    if (!mapSetFn) {
+        throw CodeGenError("quark_map_set function not found", mapLiteral->location);
+    }
+    
+    // For each key-value pair, call quark_map_set(map, key, value)
+    for (const auto& pair : mapLiteral->pairs) {
+        LLVMValueRef keyVal = genExpr(pair.first.get());
+        LLVMValueRef valueVal = genExpr(pair.second.get());
+        
+        LLVMValueRef args[] = { mapPtr, keyVal, valueVal };
+        LLVMTypeRef mapSetTy = LLVMGlobalGetValueType(mapSetFn);
+        LLVMBuildCall2(builder_, mapSetTy, mapSetFn, args, 3, "");
+    }
+    
+    if (verbose_) printf("[codegen] generated map literal\n");
+    return mapPtr;
+}
+
 LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess) {
     if (verbose_) printf("[codegen] generating array access\n");
     
+    TypeInfo arrayTypeInfo = inferType(arrayAccess->array.get());
+    
+    // Handle map subscript access map["key"]
+    if (arrayTypeInfo.type == QuarkType::Map) {
+        if (verbose_) printf("[codegen] generating map subscript access\n");
+        
+        LLVMValueRef mapPtr = genExpr(arrayAccess->array.get());
+        LLVMValueRef keyVal = genExpr(arrayAccess->index.get());
+        
+        // Call quark_map_get(map, key)
+        LLVMValueRef mapGetFn = LLVMGetNamedFunction(module_, "quark_map_get");
+        if (!mapGetFn) {
+            throw CodeGenError("quark_map_get function not found", arrayAccess->location);
+        }
+        
+        LLVMValueRef args[] = { mapPtr, keyVal };
+        LLVMTypeRef mapGetTy = LLVMGlobalGetValueType(mapGetFn);
+        LLVMValueRef result = LLVMBuildCall2(builder_, mapGetTy, mapGetFn, args, 2, "map_get_result");
+        
+        if (verbose_) printf("[codegen] generated map subscript access\n");
+        return result;
+    }
+    
+    // Handle array/string access
     LLVMValueRef arrayPtr = genExpr(arrayAccess->array.get());
     LLVMValueRef indexValue = genExprInt(arrayAccess->index.get());
     
-        TypeInfo arrayTypeInfo = inferType(arrayAccess->array.get());
     LLVMTypeRef elementType = int32_t_; // default
     
     if (arrayTypeInfo.type == QuarkType::Array) {
-                elementType = quarkTypeToLLVMType(arrayTypeInfo.elementType);
+        elementType = quarkTypeToLLVMType(arrayTypeInfo.elementType);
     } else if (arrayTypeInfo.type == QuarkType::String) {
-                elementType = int32_t_;
+        elementType = int32_t_;
     }
     
-        LLVMTypeRef desiredPtrTy = LLVMPointerType(elementType, 0);
+    LLVMTypeRef desiredPtrTy = LLVMPointerType(elementType, 0);
     if (LLVMTypeOf(arrayPtr) != desiredPtrTy) {
         arrayPtr = LLVMBuildPointerCast(builder_, arrayPtr, desiredPtrTy, "arr_as_elem_ptr");
     }
-        LLVMValueRef elementPtr = LLVMBuildGEP2(builder_, elementType, arrayPtr, &indexValue, 1, "array_access_ptr");
+    LLVMValueRef elementPtr = LLVMBuildGEP2(builder_, elementType, arrayPtr, &indexValue, 1, "array_access_ptr");
     
-        LLVMValueRef result = LLVMBuildLoad2(builder_, elementType, elementPtr, "array_access_value");
+    LLVMValueRef result = LLVMBuildLoad2(builder_, elementType, elementPtr, "array_access_value");
     
     if (verbose_) printf("[codegen] generated array access\n");
     return result;

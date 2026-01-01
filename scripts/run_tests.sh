@@ -137,7 +137,7 @@ for test_file in "${test_files[@]}"; do
     fi
     
     # Compile the test
-    if ! invoke_quark "$QUARK" "$test_file" "$executable"; then
+    if ! invoke_quark "$QUARK" "$test_file" "$executable" "--no-cache"; then
         print_color "$RED" "[FAIL] $name (compile failed)"
         ((failed++))
         continue
