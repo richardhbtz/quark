@@ -1137,6 +1137,33 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
             return TypeInfo(QuarkType::String, expr->location);
         }
     }
+    else if (objType.type == QuarkType::Map)
+    {
+        if (expr->methodName == "get" || expr->methodName == "set" ||
+            expr->methodName == "has" || expr->methodName == "len" ||
+            expr->methodName == "remove" || expr->methodName == "free")
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            if (expr->methodName == "get")
+            {
+                return TypeInfo(QuarkType::String, expr->location);
+            }
+            else if (expr->methodName == "has" || expr->methodName == "remove")
+            {
+                return TypeInfo(QuarkType::Boolean, expr->location);
+            }
+            else if (expr->methodName == "len")
+            {
+                return TypeInfo(QuarkType::Int, expr->location);
+            }
+            return TypeInfo(QuarkType::Void, expr->location);
+        }
+        error("maps only support 'get', 'set', 'has', 'len', 'remove', 'free' methods", expr->location, "E129");
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
 
     if (structName.empty())
     {
@@ -1224,6 +1251,26 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
                 }
             }
             error("strings do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+            return TypeInfo(QuarkType::Unknown, expr->location);
+        }
+        
+        if (objType.type == QuarkType::Map) {
+            if (expr->methodName == "get" || expr->methodName == "set" ||
+                expr->methodName == "has" || expr->methodName == "len" ||
+                expr->methodName == "remove" || expr->methodName == "free") {
+                for (auto &arg : expr->args) {
+                    analyzeExpr(arg.get());
+                }
+                if (expr->methodName == "get") {
+                    return TypeInfo(QuarkType::String, expr->location);
+                } else if (expr->methodName == "has" || expr->methodName == "remove") {
+                    return TypeInfo(QuarkType::Boolean, expr->location);
+                } else if (expr->methodName == "len") {
+                    return TypeInfo(QuarkType::Int, expr->location);
+                }
+                return TypeInfo(QuarkType::Void, expr->location);
+            }
+            error("maps do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
         

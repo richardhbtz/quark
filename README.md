@@ -71,10 +71,13 @@ var slice = arr.slice(0, 2, 1);
 
 // Maps (dictionaries/hashmaps)
 var m = map_new();
-map_set(m, "key", "value");
-var val = map_get(m, "key");
-if (map_has(m, "key")) { /* ... */ }
-map_free(m);
+m.set("key", "value");
+var val = m.get("key");
+if (m.has("key")) { /* ... */ }
+m.free();
+
+// Map literal syntax
+var m2 = ["name": "Alice", "age": "30"];
 
 // Pointers
 int* ptr = &x;

@@ -11,17 +11,17 @@ print(")\n");
 
 // Create a map using API
 var colors = map_new();
-map_set(colors, "red", "#FF0000");
-map_set(colors, "blue", "#0000FF");
+colors.set("red", "#FF0000");
+colors.set("blue", "#0000FF");
 
 print("Red: ");
 print(colors["red"]);
 print("\n");
 
 print("Map has ");
-print(map_len(colors));
+print(colors.len());
 print(" colors\n");
 
 // Cleanup
-map_free(colors);
-map_free(user);
+colors.free();
+user.free();

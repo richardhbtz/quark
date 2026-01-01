@@ -560,7 +560,6 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             if (methodCall->methodName == "free") {
                 return TypeInfo(QuarkType::Void, expr->location);
             }
-            // Unknown array method
             auto* er = errorReporter(); auto* sm = sourceManager(); if (er && sm) {
                 auto file = sm->getFile(expr->location.filename);
                 if (file) {
@@ -568,6 +567,22 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 }
             }
             throw CodeGenError("Unknown array method: " + methodCall->methodName, expr->location);
+        }
+        
+        if (objType.type == QuarkType::Map) {
+            if (methodCall->methodName == "get") {
+                return TypeInfo(QuarkType::String, expr->location);
+            }
+            if (methodCall->methodName == "has" || methodCall->methodName == "remove") {
+                return TypeInfo(QuarkType::Boolean, expr->location);
+            }
+            if (methodCall->methodName == "len") {
+                return TypeInfo(QuarkType::Int, expr->location);
+            }
+            if (methodCall->methodName == "set" || methodCall->methodName == "free") {
+                return TypeInfo(QuarkType::Void, expr->location);
+            }
+            throw CodeGenError("Unknown map method: " + methodCall->methodName, expr->location);
         }
 
         // Special case for str.split() which returns str[]
@@ -782,6 +797,21 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 TypeInfo arrType(QuarkType::Array, staticCall->location);
                 arrType.elementType = QuarkType::String;
                 return arrType;
+            }
+        }
+        
+        if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Map) {
+            if (staticCall->methodName == "get") {
+                return TypeInfo(QuarkType::String, staticCall->location);
+            }
+            if (staticCall->methodName == "has" || staticCall->methodName == "remove") {
+                return TypeInfo(QuarkType::Boolean, staticCall->location);
+            }
+            if (staticCall->methodName == "len") {
+                return TypeInfo(QuarkType::Int, staticCall->location);
+            }
+            if (staticCall->methodName == "set" || staticCall->methodName == "free") {
+                return TypeInfo(QuarkType::Void, staticCall->location);
             }
         }
         
@@ -3450,6 +3480,49 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
         throw CodeGenError("Unknown array method: " + methodCall->methodName, methodCall->location);
     }
 
+    if (objType.type == QuarkType::Map) {
+        std::vector<LLVMValueRef> args;
+        args.push_back(objectValue);
+        
+        if (methodCall->methodName == "get") {
+            if (methodCall->args.size() != 1)
+                throw CodeGenError("map.get expects 1 argument: key", methodCall->location);
+            LLVMValueRef key = genExpr(methodCall->args[0].get());
+            args.push_back(key);
+            return builtinFunctions_->generateBuiltinCall("map_get", args);
+        }
+        if (methodCall->methodName == "set") {
+            if (methodCall->args.size() != 2)
+                throw CodeGenError("map.set expects 2 arguments: key, value", methodCall->location);
+            LLVMValueRef key = genExpr(methodCall->args[0].get());
+            LLVMValueRef value = genExpr(methodCall->args[1].get());
+            args.push_back(key);
+            args.push_back(value);
+            return builtinFunctions_->generateBuiltinCall("map_set", args);
+        }
+        if (methodCall->methodName == "has") {
+            if (methodCall->args.size() != 1)
+                throw CodeGenError("map.has expects 1 argument: key", methodCall->location);
+            LLVMValueRef key = genExpr(methodCall->args[0].get());
+            args.push_back(key);
+            return builtinFunctions_->generateBuiltinCall("map_has", args);
+        }
+        if (methodCall->methodName == "len") {
+            return builtinFunctions_->generateBuiltinCall("map_len", args);
+        }
+        if (methodCall->methodName == "remove") {
+            if (methodCall->args.size() != 1)
+                throw CodeGenError("map.remove expects 1 argument: key", methodCall->location);
+            LLVMValueRef key = genExpr(methodCall->args[0].get());
+            args.push_back(key);
+            return builtinFunctions_->generateBuiltinCall("map_remove", args);
+        }
+        if (methodCall->methodName == "free") {
+            return builtinFunctions_->generateBuiltinCall("map_free", args);
+        }
+        throw CodeGenError("Unknown map method: " + methodCall->methodName, methodCall->location);
+    }
+
         if (objType.type == QuarkType::Struct) {
         // Resolve struct type name
         std::string structName = objType.structName;
@@ -3907,6 +3980,55 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
             return builtinFunctions_->generateBuiltinCall("str_split", args);
         }
         throw std::runtime_error("Unknown string method: " + staticCall->methodName);
+    }
+    
+    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Map) {
+        if (verbose_)
+            printf("[codegen] genStaticCall: treating as map method call on '%s'\n", staticCall->structName.c_str());
+        
+        VariableExprAST varExpr(staticCall->structName);
+        LLVMValueRef objectValue = genExpr(&varExpr);
+        
+        std::vector<LLVMValueRef> args;
+        args.push_back(objectValue);
+        
+        if (staticCall->methodName == "get") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("map.get expects 1 argument: key", staticCall->location);
+            LLVMValueRef key = genExpr(staticCall->args[0].get());
+            args.push_back(key);
+            return builtinFunctions_->generateBuiltinCall("map_get", args);
+        }
+        if (staticCall->methodName == "set") {
+            if (staticCall->args.size() != 2)
+                throw CodeGenError("map.set expects 2 arguments: key, value", staticCall->location);
+            LLVMValueRef key = genExpr(staticCall->args[0].get());
+            LLVMValueRef value = genExpr(staticCall->args[1].get());
+            args.push_back(key);
+            args.push_back(value);
+            return builtinFunctions_->generateBuiltinCall("map_set", args);
+        }
+        if (staticCall->methodName == "has") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("map.has expects 1 argument: key", staticCall->location);
+            LLVMValueRef key = genExpr(staticCall->args[0].get());
+            args.push_back(key);
+            return builtinFunctions_->generateBuiltinCall("map_has", args);
+        }
+        if (staticCall->methodName == "len") {
+            return builtinFunctions_->generateBuiltinCall("map_len", args);
+        }
+        if (staticCall->methodName == "remove") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("map.remove expects 1 argument: key", staticCall->location);
+            LLVMValueRef key = genExpr(staticCall->args[0].get());
+            args.push_back(key);
+            return builtinFunctions_->generateBuiltinCall("map_remove", args);
+        }
+        if (staticCall->methodName == "free") {
+            return builtinFunctions_->generateBuiltinCall("map_free", args);
+        }
+        throw std::runtime_error("Unknown map method: " + staticCall->methodName);
     }
     
             std::string actualStructType = staticCall->structName;

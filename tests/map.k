@@ -4,17 +4,17 @@
 // EXPECT: 1
 int main() {
     var m = map_new();
-    map_set(m, "a", "1");
-    map_set(m, "b", "2");
+    m.set("a", "1");
+    m.set("b", "2");
 
-    print(map_has(m, "a"));
-    print(map_get(m, "b"));
-    print(map_len(m));
+    print(m.has("a"));
+    print(m.get("b"));
+    print(m.len());
 
-    map_remove(m, "a");
-    print(map_len(m));
+    m.remove("a");
+    print(m.len());
 
-    map_free(m);
+    m.free();
     ret 0;
 }
 

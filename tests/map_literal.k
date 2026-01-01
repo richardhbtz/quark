@@ -8,7 +8,7 @@ int main() {
     var v2 = m["ligma"];
     print(v1);
     print(v2);
-    print(map_has(m, "sigma"));
-    print(map_len(m));
+    print(m.has("sigma"));
+    print(m.len());
     ret 0;
 }
