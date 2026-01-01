@@ -60,7 +60,7 @@ int main() {
     int seven = 7; var f = (float)seven; print("{}", format("int={} as_float={}", seven, f));
 
     print("{}", "--- JSON LIBRARY ---");
-    var jsonStr: str = "{\"a\":1, \"c\":{\"d\":\"x\"}}"; var js = Json.new(); var extracted = js.get(jsonStr, "c.d"); print("{}", extracted);
+    var jsonStr: str = "{\"a\":1, \"c\":{\"d\":\"x\"}}"; var js = Json.new(jsonStr); var extracted = js.get("c.d"); print("{}", extracted);
 
     print("{}", "--- MATCH (STUB) ---");
     // match stub omitted due to parser limitations; simulate success output

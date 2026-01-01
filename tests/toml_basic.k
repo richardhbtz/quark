@@ -4,7 +4,6 @@
 //EXPECT: name=Quark|version=2|color=blue|count=3|json={"features":{"color":"blue","count":3},"name":"Quark","version":2}
 int main() {
     var doc = Toml.new();
-    var js = Json.new();
     doc.load_string("name = \"Quark\"\nversion = 1\n[features]\ncolor = \"red\"\ncount = 2\n");
 
     doc.set_int("version", 2);
@@ -17,7 +16,8 @@ int main() {
     var count = doc.get_int("features.count");
     var json = doc.to_json();
 
-    print("name={}|version={}|color={}|count={}|json={}", name, version, color, count, js.minify(json));
+    var js = Json.new(json);
+    print("name={}|version={}|color={}|count={}|json={}", name, version, color, count, js.minify());
 
     doc.free_string(name);
     doc.free_string(color);

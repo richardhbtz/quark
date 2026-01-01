@@ -17,20 +17,22 @@ extern "C" {
 }
 
 struct Json {
-    data { }
+    data { 
+        content: str;
+    }
 
-    Json new() { ret Json {}; }
+    Json new(text: str) { ret Json { content: text }; }
 
-    str minify(text: str) { ret qjson_minify(text); }
-    str pretty(text: str, indent: str, newline: str) { ret qjson_pretty(text, indent, newline); }
-    bool validate(text: str) { ret qjson_validate(text) != 0; }
-    str get(text: str, path: str) { ret qjson_get(text, path); }
-    str get_string(text: str, path: str) { ret qjson_get_string(text, path); }
+    str minify() { ret qjson_minify(this.content); }
+    str pretty(indent: str, newline: str) { ret qjson_pretty(this.content, indent, newline); }
+    bool validate() { ret qjson_validate(this.content) != 0; }
+    str get(path: str) { ret qjson_get(this.content, path); }
+    str get_string(path: str) { ret qjson_get_string(this.content, path); }
     
     // Array access methods
-    int get_array_length(text: str, path: str) { ret qjson_get_array_length(text, path); }
-    str get_array_item(text: str, path: str, index: int) { ret qjson_get_array_item(text, path, index); }
-    str get_array_string(text: str, path: str, index: int) { ret qjson_get_array_string(text, path, index); }
+    int get_array_length(path: str) { ret qjson_get_array_length(this.content, path); }
+    str get_array_item(path: str, index: int) { ret qjson_get_array_item(this.content, path, index); }
+    str get_array_string(path: str, index: int) { ret qjson_get_array_string(this.content, path, index); }
 
     str last_error() { ret qjson_last_error(); }
     int last_error_code() { ret qjson_last_error_code(); }

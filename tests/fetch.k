@@ -5,10 +5,10 @@
 int main()
 {
     var httpClient = Http.new();
-    var jsonParser = Json.new();
     str content = httpClient.get("https://jsonplaceholder.typicode.com/todos/1");
+    var jsonParser = Json.new(content);
 
-    str title = jsonParser.get_string(content, "title");
+    str title = jsonParser.get_string("title");
 
     print(title);
     ret 0;

@@ -1,52 +1,52 @@
 // Comprehensive map (dictionary/hashmap) example
 
 int main() {
-    println("=== Creating a map ===");
+    print("=== Creating a map ===");
     var users = map_new();
     
-    println("\n=== Adding entries ===");
+    print("\n=== Adding entries ===");
     users.set("alice", "Engineer");
     users.set("bob", "Designer");
     users.set("charlie", "Manager");
     
-    println("Map size: {}", users.len());
+    print("Map size: {}", users.len());
     
-    println("\n=== Retrieving values ===");
-    println("Alice's role: {}", users.get("alice"));
-    println("Bob's role: {}", users.get("bob"));
+    print("\n=== Retrieving values ===");
+    print("Alice's role: {}", users.get("alice"));
+    print("Bob's role: {}", users.get("bob"));
     
-    println("\n=== Checking existence ===");
+    print("\n=== Checking existence ===");
     if (users.has("alice")) {
-        println("Alice exists in map");
+        print("Alice exists in map");
     }
     
     if (!users.has("david")) {
-        println("David does not exist in map");
+        print("David does not exist in map");
     }
     
-    println("\n=== Updating values ===");
+    print("\n=== Updating values ===");
     users.set("alice", "Senior Engineer");
-    println("Alice's new role: {}", users.get("alice"));
+    print("Alice's new role: {}", users.get("alice"));
     
-    println("\n=== Removing entries ===");
+    print("\n=== Removing entries ===");
     if (users.remove("bob")) {
-        println("Removed bob from map");
+        print("Removed bob from map");
     }
-    println("Map size after removal: {}", users.len());
+    print("Map size after removal: {}", users.len());
     
-    println("\n=== Using maps for configuration ===");
+    print("\n=== Using maps for configuration ===");
     var config = map_new();
     config.set("host", "localhost");
     config.set("port", "8080");
     config.set("protocol", "http");
     
     var url = config.get("protocol") + "://" + config.get("host") + ":" + config.get("port");
-    println("URL: {}", url);
+    print("URL: {}", url);
     
-    println("\n=== Cleanup ===");
+    print("\n=== Cleanup ===");
     users.free();
     config.free();
-    println("Maps freed");
+    print("Maps freed");
     
     ret 0;
 }
