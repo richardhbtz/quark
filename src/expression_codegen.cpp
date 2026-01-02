@@ -298,6 +298,9 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
     
     if (auto *s = dynamic_cast<StringExprAST *>(expr))
         return TypeInfo(QuarkType::String, expr->location);
+    
+    if (auto *c = dynamic_cast<CharExprAST *>(expr))
+        return TypeInfo(QuarkType::Char, expr->location);
         
     if (auto *b = dynamic_cast<BoolExprAST *>(expr))
         return TypeInfo(QuarkType::Boolean, expr->location);
@@ -1111,6 +1114,9 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                     return LLVMBuildZExt(builder_, val, int32_t_, "int_norm_i32");
                 }
                 return val;
+            } else if (srcT.type == QuarkType::Char) {
+                // Char (i8) to int (i32) - zero extend
+                return LLVMBuildZExt(builder_, val, int32_t_, "char_to_int");
             } else if (srcT.type == QuarkType::Float) {
                 return LLVMBuildFPToSI(builder_, val, int32_t_, "float_to_int");
             } else if (srcT.type == QuarkType::Double) {
@@ -1242,6 +1248,11 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
     {
         const std::string& strValue = s->value;
                 return LLVMBuildGlobalStringPtr(builder_, strValue.c_str(), "str_literal");
+    }
+    if (auto *c = dynamic_cast<CharExprAST *>(expr))
+    {
+        // Char is represented as i8
+        return LLVMConstInt(LLVMInt8TypeInContext(ctx_), static_cast<unsigned char>(c->value), 0);
     }
     if (auto *n = dynamic_cast<NumberExprAST *>(expr))
     {
@@ -1616,6 +1627,9 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                                                         return LLVMBuildLoad2(builder_, int8ptr_t_, it->second, (v->name + ".load").c_str());
                         } else if (typeIt->second == int32_t_) {
                                                         return LLVMBuildLoad2(builder_, int32_t_, it->second, (v->name + ".load").c_str());
+                        } else if (typeIt->second == LLVMInt8TypeInContext(ctx_)) {
+                            // Char type (i8)
+                            return LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(ctx_), it->second, (v->name + ".load").c_str());
                         } else if (typeIt->second == float_t_) {
                                                         return LLVMBuildLoad2(builder_, float_t_, it->second, (v->name + ".load").c_str());
                         } else if (typeIt->second == double_t_) {
@@ -4256,6 +4270,7 @@ LLVMTypeRef ExpressionCodeGen::quarkTypeToLLVMType(QuarkType type) {
         case QuarkType::Int: return int32_t_;
         case QuarkType::Float: return float_t_;
         case QuarkType::Double: return double_t_;
+        case QuarkType::Char: return LLVMInt8TypeInContext(ctx_);
         case QuarkType::String: return int8ptr_t_;
         case QuarkType::Map: return int8ptr_t_;
         case QuarkType::Boolean: return bool_t_;

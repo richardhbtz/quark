@@ -8,6 +8,7 @@ enum class QuarkType {
     Int,        // 32-bit signed integer (the only integer type)
     Float,      // 32-bit floating point
     Double,     // 64-bit floating point  
+    Char,       // 8-bit character
     String,
     Map,        // String-keyed map (str -> str)
     Boolean,
@@ -74,6 +75,7 @@ public:
         if (typeName == "int") return QuarkType::Int;
         if (typeName == "float") return QuarkType::Float;
         if (typeName == "double") return QuarkType::Double;
+        if (typeName == "char") return QuarkType::Char;
         if (typeName == "str") return QuarkType::String;
         if (typeName == "map") return QuarkType::Map;
         if (typeName == "bool") return QuarkType::Boolean;
@@ -104,6 +106,7 @@ public:
             case QuarkType::Int: return "int";
             case QuarkType::Float: return "float";
             case QuarkType::Double: return "double";
+            case QuarkType::Char: return "char";
             case QuarkType::String: return "str";
             case QuarkType::Map: return "map";
             case QuarkType::Boolean: return "bool";

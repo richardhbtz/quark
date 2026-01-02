@@ -163,6 +163,7 @@ Token Lexer::next()
         else if (s == "str") tok.kind = tok_str;
         else if (s == "float") tok.kind = tok_float;
         else if (s == "double") tok.kind = tok_double;
+        else if (s == "char") tok.kind = tok_char;
         else if (s == "extern") tok.kind = tok_extern;
         else if (s == "var") tok.kind = tok_var;
         else if (s == "struct") tok.kind = tok_struct;
@@ -294,6 +295,57 @@ Token Lexer::next()
         tok.location = tokenStart;
         if (verbose_)
             printf("[lexer] string '%s' at %d:%d\n", s.c_str(), tokenStart.line, tokenStart.column);
+        return tok;
+    }
+
+    // Character literal: 'x' or '\n', etc.
+    if (c == '\'')
+    {
+        advancePosition(c);
+        ++idx_;
+        char charValue = 0;
+        if (idx_ < src_.size())
+        {
+            char ch = src_[idx_];
+            if (ch == '\\' && idx_ + 1 < src_.size())
+            {
+                // Handle escape sequences
+                advancePosition(ch);
+                ++idx_;
+                ch = src_[idx_];
+                switch (ch)
+                {
+                    case 'n': charValue = '\n'; break;
+                    case 't': charValue = '\t'; break;
+                    case 'r': charValue = '\r'; break;
+                    case 'b': charValue = '\b'; break;
+                    case 'f': charValue = '\f'; break;
+                    case 'a': charValue = '\a'; break;
+                    case 'v': charValue = '\v'; break;
+                    case '\\': charValue = '\\'; break;
+                    case '\'': charValue = '\''; break;
+                    case '"': charValue = '"'; break;
+                    case '0': charValue = '\0'; break;
+                    default: charValue = ch; break;
+                }
+            }
+            else
+            {
+                charValue = ch;
+            }
+            advancePosition(src_[idx_]);
+            ++idx_;
+        }
+        // Expect closing quote
+        if (idx_ < src_.size() && src_[idx_] == '\'')
+        {
+            advancePosition(src_[idx_]);
+            ++idx_;
+        }
+        Token tok{ tok_char_literal, static_cast<double>(charValue), std::string(1, charValue) };
+        tok.location = tokenStart;
+        if (verbose_)
+            printf("[lexer] char '%c' (%d) at %d:%d\n", charValue, (int)charValue, tokenStart.line, tokenStart.column);
         return tok;
     }
 

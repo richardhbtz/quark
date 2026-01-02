@@ -24,6 +24,12 @@ struct StringExprAST : ExprAST
     explicit StringExprAST(std::string v) : value(std::move(v)) {}
 };
 
+struct CharExprAST : ExprAST
+{
+    char value;
+    explicit CharExprAST(char v) : value(v) {}
+};
+
 struct NumberExprAST : ExprAST
 {
     double value;
@@ -379,6 +385,7 @@ private:
             case tok_str: return "str";
             case tok_float: return "float";
             case tok_double: return "double";
+            case tok_char: return "char";
             case tok_identifier: return token.text;
             default: return token.text;
         }
@@ -414,6 +421,7 @@ private:
                token.kind == tok_int ||
                token.kind == tok_str ||
                token.kind == tok_float ||
-               token.kind == tok_double;
+               token.kind == tok_double ||
+               token.kind == tok_char;
     }
 };

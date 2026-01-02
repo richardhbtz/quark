@@ -1277,6 +1277,13 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         next();
         return s;
     }
+    if (cur_.kind == tok_char_literal)
+    {
+        char charValue = static_cast<char>(static_cast<int>(cur_.numberValue));
+        auto c = std::make_unique<CharExprAST>(charValue);
+        next();
+        return c;
+    }
     if (cur_.kind == tok_paren_open)
     {
                 SourceLocation openLoc = cur_.location;

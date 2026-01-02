@@ -36,6 +36,8 @@ enum TokenKind
     tok_str,     // str type
     tok_float,   // float type (32-bit floating point)
     tok_double,  // double type (64-bit floating point)
+    tok_char,    // char type (8-bit character)
+    tok_char_literal, // character literal 'x'
     tok_unknown,
     tok_and,
     tok_or,

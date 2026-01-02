@@ -698,6 +698,18 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             varType = int8ptr_t_;
             val = expressionCodeGen_->genExpr(vdecl->init.get());
             break;
+        case QuarkType::Char:
+            actualType = "char";
+            varType = LLVMInt8TypeInContext(ctx_);
+            val = expressionCodeGen_->genExpr(vdecl->init.get());
+            // Handle conversion from int to char if needed
+            if (val) {
+                LLVMTypeRef vty = LLVMTypeOf(val);
+                if (LLVMGetTypeKind(vty) == LLVMIntegerTypeKind && LLVMGetIntTypeWidth(vty) > 8) {
+                    val = LLVMBuildTrunc(builder_, val, LLVMInt8TypeInContext(ctx_), "trunc_to_char");
+                }
+            }
+            break;
         default:
             throwError("Unsupported variable type for " + vdecl->name, vdecl->location, ErrorCodes::INVALID_TYPE, (int)vdecl->name.size());
     }
