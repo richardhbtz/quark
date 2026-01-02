@@ -1,3 +1,5 @@
+module http
+
 extern "C" {
     str http_get(str);
     str http_post(str, str, str);

@@ -1,3 +1,5 @@
+module json
+
 extern "C" {
     str qjson_minify(str);
     str qjson_pretty(str, str, str);

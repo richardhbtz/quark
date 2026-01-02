@@ -1,7 +1,7 @@
 //EXPECT: echo: hello
 //EXPECT: done
 
-import "lib/ws/ws.k"
+import ws
 
 int main() {
     var ws = Ws.new();

@@ -1,4 +1,4 @@
-import "lib/json/json.k"
+import json
 
 // EXPECT: Array length: 3
 // EXPECT: Item 0: apple

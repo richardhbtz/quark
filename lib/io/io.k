@@ -1,3 +1,5 @@
+module io
+
 extern "C" {
     str io_read_file(str);
     int io_write_file(str, str);

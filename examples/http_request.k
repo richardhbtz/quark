@@ -1,6 +1,6 @@
 // HTTP Requests using the built-in HTTP library
 
-import "lib/http/http.k"
+import http
 
 int main() {
     // Create HTTP client

@@ -175,6 +175,12 @@ struct IncludeStmt : StmtAST {
     IncludeStmt() = default;
 };
 
+// Module declaration: module <name>
+struct ModuleDeclStmt : StmtAST {
+    std::string moduleName;
+    explicit ModuleDeclStmt(const std::string& name) : moduleName(name) {}
+};
+
 // Struct definition: struct Name { data { fields... }, methods... }
 struct StructDefStmt : StmtAST {
     std::string name;

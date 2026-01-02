@@ -1,4 +1,4 @@
-import "lib/http/http.k"
+import http
 
 //EXPECT: Hello world!
 int main() {

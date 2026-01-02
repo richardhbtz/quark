@@ -73,6 +73,14 @@ void StatementCodeGen::genStmt(StmtAST *stmt, LLVMValueRef putsFn)
         genIncludeStmt(inc, putsFn);
         return;
     }
+    
+    // Module declaration - no code generation needed
+    if (auto *modDecl = dynamic_cast<ModuleDeclStmt *>(stmt))
+    {
+        if (verbose_)
+            printf("[codegen] Module declaration: %s (no codegen needed)\n", modDecl->moduleName.c_str());
+        return;
+    }
 
         if (auto *externFunc = dynamic_cast<ExternFunctionAST *>(stmt))
     {

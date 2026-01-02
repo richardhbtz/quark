@@ -1,3 +1,5 @@
+module ws
+
 extern "C" {
 	int ws_create();
 	int ws_connect(int, str, str[], int); // handle, url, headers, header_count

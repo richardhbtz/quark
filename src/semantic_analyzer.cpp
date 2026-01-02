@@ -396,6 +396,14 @@ void SemanticAnalyzer::analyzeStmt(StmtAST *stmt)
     {
         analyzeInclude(inc);
     }
+    else if (auto *modDecl = dynamic_cast<ModuleDeclStmt *>(stmt))
+    {
+        // Module declaration - store the module name for this file
+        // This is informational for now - used by the module system
+        if (verbose_) {
+            printf("[semantic] Module declaration: %s\n", modDecl->moduleName.c_str());
+        }
+    }
     else if (auto *func = dynamic_cast<FunctionAST *>(stmt))
     {
         analyzeFunction(func);

@@ -1,5 +1,5 @@
-import "lib/http/http.k"
-import "lib/json/json.k"
+import http
+import json
 
 //EXPECT: delectus aut autem
 int main()

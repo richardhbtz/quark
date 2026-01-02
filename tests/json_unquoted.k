@@ -1,4 +1,4 @@
-import "lib/json/json.k"
+import json
 
 // EXPECT: x
 int main() {

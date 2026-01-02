@@ -97,6 +97,35 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     if (verbose_) {
         printf("[parser] parseStatement entry: kind=%d text='%s' at %d:%d\n", (int)cur_.kind, cur_.text.c_str(), cur_.location.line, cur_.location.column);
     }
+    
+    // module declaration: module <name>
+    if (cur_.kind == tok_module)
+    {
+        SourceLocation moduleLoc = cur_.location;
+        next();
+        
+        if (cur_.kind != tok_identifier) {
+            auto* er = errorReporter();
+            auto* sm = sourceManager();
+            if (er && sm) {
+                auto file = sm->getFile(cur_.location.filename);
+                if (file) {
+                    throw EnhancedParseError("expected module name after 'module'", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
+                }
+            }
+            throw ParseError("expected module name after 'module'", cur_.location);
+        }
+        
+        std::string moduleName = cur_.text;
+        next();
+        
+        if (cur_.kind == tok_semicolon) next();
+        
+        auto modDecl = std::make_unique<ModuleDeclStmt>(moduleName);
+        modDecl->location = moduleLoc;
+        return modDecl;
+    }
+    
     // break statement
     if (cur_.kind == tok_break)
     {
@@ -123,7 +152,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         if (cur_.kind == tok_brace_open) {
             next();
             while (cur_.kind != tok_brace_close && cur_.kind != tok_eof) {
-                // Can be identifier (module name) or string (path)
                 if (cur_.kind == tok_identifier) {
                     // Parse module path: json, http/client, etc.
                     std::string moduleName = cur_.text;
@@ -137,11 +165,8 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                         next();
                     }
                     modulePaths.push_back(moduleName);
-                } else if (cur_.kind == tok_string) {
-                    modulePaths.push_back(cur_.text);
-                    next();
                 } else {
-                    throw ParseError("expected module name or string path in import list", cur_.location);
+                    throw ParseError("expected module name in import list", cur_.location);
                 }
                 
                 if (cur_.kind == tok_comma) {
@@ -167,20 +192,16 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 next();
             }
             modulePaths.push_back(moduleName);
-        } else if (cur_.kind == tok_string) {
-            // Legacy: import "path/to/file.k"
-            modulePaths.push_back(cur_.text);
-            next();
         } else {
             auto* er = errorReporter();
             auto* sm = sourceManager();
             if (er && sm) {
                 auto file = sm->getFile(cur_.location.filename);
                 if (file) {
-                    throw EnhancedParseError("expected module name or path after 'import'", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
+                    throw EnhancedParseError("expected module name after 'import'", cur_.location, file->content, ErrorCodes::INVALID_SYNTAX);
                 }
             }
-            throw ParseError("expected module name or path after 'import'", cur_.location);
+            throw ParseError("expected module name after 'import'", cur_.location);
         }
         
         if (cur_.kind == tok_semicolon)
@@ -193,32 +214,22 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         for (const std::string& modulePath : modulePaths) {
             std::string resolvedPath;
             
-            // Check if it's a quoted path (starts with . or has .k extension)
-            bool isQuotedPath = (modulePath.size() >= 2 && modulePath[0] == '.') ||
-                                (modulePath.find(".k") != std::string::npos);
-            
-            if (isQuotedPath) {
-                // Direct file path
-                resolvedPath = modulePath;
-            } else {
-                // Try to resolve via module resolver
-                if (g_moduleResolver) {
-                    auto resolved = g_moduleResolver->resolve(modulePath, cur_.location.filename);
-                    if (resolved) {
-                        resolvedPath = resolved->string();
-                    } else {
-                        throw ParseError("could not resolve module '" + modulePath + "'", importLoc);
-                    }
+            // Resolve via module resolver
+            if (g_moduleResolver) {
+                auto resolved = g_moduleResolver->resolve(modulePath, cur_.location.filename);
+                if (resolved) {
+                    resolvedPath = resolved->string();
                 } else {
-                    // Fallback: try lib/<module>/<module>.k pattern
-                    resolvedPath = "lib/" + modulePath + "/" + modulePath + ".k";
-                    // Replace slashes properly
-                    std::string baseMod = modulePath;
-                    auto slashPos = modulePath.find('/');
-                    if (slashPos != std::string::npos) {
-                        baseMod = modulePath.substr(0, slashPos);
-                        resolvedPath = "lib/" + baseMod + "/" + modulePath.substr(slashPos + 1) + ".k";
-                    }
+                    throw ParseError("could not resolve module '" + modulePath + "'", importLoc);
+                }
+            } else {
+                // Fallback: try lib/<module>/<module>.k pattern
+                resolvedPath = "lib/" + modulePath + "/" + modulePath + ".k";
+                std::string baseMod = modulePath;
+                auto slashPos = modulePath.find('/');
+                if (slashPos != std::string::npos) {
+                    baseMod = modulePath.substr(0, slashPos);
+                    resolvedPath = "lib/" + baseMod + "/" + modulePath.substr(slashPos + 1) + ".k";
                 }
             }
             
@@ -249,49 +260,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             {
                 inc->stmts.push_back(std::move(s));
             }
-        }
-        return inc;
-    }
-
-    // include("path.k"); - deprecated function-style syntax
-    if (cur_.kind == tok_identifier && cur_.text == "include")
-    {
-        next();
-        if (cur_.kind != tok_paren_open)
-            throw ParseError("expected '(' after include (deprecated: use 'import \"file.k\"' instead)", cur_.location);
-        next();
-        if (cur_.kind != tok_string)
-            throw ParseError("expected string literal path in include", cur_.location);
-        std::string path = cur_.text;
-        next();
-        if (cur_.kind != tok_paren_close)
-            throw ParseError("expected ')' after include path", cur_.location);
-        next();
-        if (cur_.kind != tok_semicolon)
-            throw ParseError("expected ';' after include", cur_.location);
-        next();
-
-        // Read file contents
-        std::ifstream f(path);
-        if (!f.is_open())
-            throw ParseError(std::string("failed to open import file: ") + path, cur_.location);
-        std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
-        f.close();
-
-        // Add file to source manager for proper error reporting
-        if (ctx_) {
-            ctx_->sourceManager.addFile(path, contents);
-        }
-
-        Lexer sublex(contents, verbose_, path);
-        Parser subparser(sublex, verbose_, ctx_);
-        auto subprog = subparser.parseProgram();
-
-        auto inc = std::make_unique<IncludeStmt>();
-        inc->importedFiles.push_back(path);
-        for (auto &s : subprog->stmts)
-        {
-            inc->stmts.push_back(std::move(s));
         }
         return inc;
     }

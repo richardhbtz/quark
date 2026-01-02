@@ -1,6 +1,6 @@
 // JSON Parsing using the built-in JSON library
 
-import "lib/json/json.k"
+import json
 
 int main() {
     // Parse JSON and extract values

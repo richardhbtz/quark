@@ -1,5 +1,8 @@
 #include "../include/module_resolver.h"
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <cctype>
 
 std::unique_ptr<ModuleResolver> g_moduleResolver;
 
@@ -27,6 +30,126 @@ ModuleResolver::ModuleResolver(const std::filesystem::path& compilerPath,
     } else {
         projectPath_ = std::filesystem::current_path(ec);
     }
+}
+
+void ModuleResolver::buildModuleRegistry() {
+    if (registryBuilt_) return;
+    registryBuilt_ = true;
+    
+    std::error_code ec;
+    
+    // Scan standard library directories
+    std::vector<std::filesystem::path> libDirs = {
+        compilerPath_ / "lib",
+        compilerPath_.parent_path().parent_path() / "lib"  // Dev: build/Release -> repo/lib
+    };
+    
+    for (const auto& libDir : libDirs) {
+        if (std::filesystem::exists(libDir, ec)) {
+            scanDirectory(libDir);
+        }
+    }
+    
+    // Scan project modules directory
+    std::filesystem::path modulesDir = projectPath_ / "modules";
+    if (std::filesystem::exists(modulesDir, ec)) {
+        scanDirectory(modulesDir);
+    }
+    
+    // Scan custom search paths
+    for (const auto& searchPath : searchPaths_) {
+        if (std::filesystem::exists(searchPath, ec)) {
+            scanDirectory(searchPath);
+        }
+    }
+}
+
+void ModuleResolver::scanDirectory(const std::filesystem::path& dir) const {
+    std::error_code ec;
+    
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(dir, ec)) {
+        if (ec) continue;
+        
+        if (entry.is_regular_file() && entry.path().extension() == ".k") {
+            auto moduleName = extractModuleName(entry.path());
+            if (moduleName) {
+                // Only register if not already registered (first found wins)
+                if (moduleRegistry_.find(*moduleName) == moduleRegistry_.end()) {
+                    moduleRegistry_[*moduleName] = std::filesystem::canonical(entry.path(), ec);
+                }
+            }
+        }
+    }
+}
+
+std::optional<std::string> ModuleResolver::extractModuleName(const std::filesystem::path& filePath) {
+    std::ifstream file(filePath);
+    if (!file.is_open()) {
+        return std::nullopt;
+    }
+    
+    std::string line;
+    // Read lines until we find a non-comment, non-empty line
+    while (std::getline(file, line)) {
+        // Skip UTF-8 BOM if present
+        if (line.size() >= 3 && 
+            static_cast<unsigned char>(line[0]) == 0xEF &&
+            static_cast<unsigned char>(line[1]) == 0xBB &&
+            static_cast<unsigned char>(line[2]) == 0xBF) {
+            line = line.substr(3);
+        }
+        
+        // Trim leading whitespace
+        size_t start = 0;
+        while (start < line.size() && std::isspace(static_cast<unsigned char>(line[start]))) {
+            start++;
+        }
+        line = line.substr(start);
+        
+        // Skip empty lines
+        if (line.empty()) continue;
+        
+        // Skip single-line comments
+        if (line.size() >= 2 && line[0] == '/' && line[1] == '/') continue;
+        
+        // Check for module declaration
+        if (line.size() >= 7 && line.substr(0, 6) == "module" && 
+            std::isspace(static_cast<unsigned char>(line[6]))) {
+            // Extract module name
+            size_t nameStart = 7;
+            while (nameStart < line.size() && std::isspace(static_cast<unsigned char>(line[nameStart]))) {
+                nameStart++;
+            }
+            
+            size_t nameEnd = nameStart;
+            while (nameEnd < line.size() && 
+                   (std::isalnum(static_cast<unsigned char>(line[nameEnd])) || line[nameEnd] == '_')) {
+                nameEnd++;
+            }
+            
+            if (nameEnd > nameStart) {
+                return line.substr(nameStart, nameEnd - nameStart);
+            }
+        }
+        
+        // If first non-comment line is not a module declaration, stop searching
+        break;
+    }
+    
+    return std::nullopt;
+}
+
+std::optional<std::filesystem::path> ModuleResolver::resolveFromRegistry(const std::string& moduleName) const {
+    // Build registry on first use
+    if (!registryBuilt_) {
+        const_cast<ModuleResolver*>(this)->buildModuleRegistry();
+    }
+    
+    auto it = moduleRegistry_.find(moduleName);
+    if (it != moduleRegistry_.end()) {
+        return it->second;
+    }
+    return std::nullopt;
 }
 
 bool ModuleResolver::isStdModule(const std::string& moduleName) const {
@@ -82,7 +205,12 @@ std::optional<std::filesystem::path> ModuleResolver::resolve(
         return std::nullopt;
     }
     
-    // Try standard library first
+    // Try module registry first (scans for 'module' declarations)
+    if (auto path = resolveFromRegistry(moduleName)) {
+        return path;
+    }
+    
+    // Try standard library by convention
     if (auto path = resolveStdLib(moduleName)) {
         return path;
     }

@@ -1,3 +1,5 @@
+module toml
+
 extern "C" {
     int qtoml_parse_file(str);
     int qtoml_parse_string(str);

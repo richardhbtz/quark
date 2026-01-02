@@ -135,6 +135,13 @@ Token Lexer::next()
                 printf("[lexer] import directive at %d:%d\n", tokenStart.line, tokenStart.column);
             return tok;
         }
+        
+        if (s == "module") {
+            tok.kind = tok_module;
+            if (verbose_)
+                printf("[lexer] module declaration at %d:%d\n", tokenStart.line, tokenStart.column);
+            return tok;
+        }
 
         if (s == "in") {
             tok.kind = tok_in;
@@ -290,32 +297,6 @@ Token Lexer::next()
         return tok;
     }
 
-    // Handle # for backward compatibility with #include (deprecated)
-    if (c == '#') {
-        // consume '#'
-        advancePosition(c);
-        ++idx_;
-        // read identifier after '#'
-        size_t start = idx_;
-        while (idx_ < src_.size() && (isalpha((unsigned char)src_[idx_]) || src_[idx_] == '_')) {
-            advancePosition(src_[idx_]);
-            ++idx_;
-        }
-        std::string s = src_.substr(start, idx_ - start);
-        Token tok;
-        tok.location = tokenStart;
-        if (s == "include") {
-            tok.kind = tok_include;
-            tok.text = "import"; // normalize to import
-            if (verbose_) printf("[lexer] #include (deprecated, use 'import') at %d:%d\n", tokenStart.line, tokenStart.column);
-            return tok;
-        }
-        // Unknown preprocessor directive
-        tok.kind = tok_unknown;
-        tok.text = "#" + s;
-        if (verbose_) printf("[lexer] unknown preprocessor '%s' at %d:%d\n", s.c_str(), tokenStart.line, tokenStart.column);
-        return tok;
-    }
         if (c == '.' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '.') {
         advancePosition(c);
         ++idx_;

@@ -11,7 +11,7 @@ enum TokenKind
     tok_equal,
     tok_brace_open,
     tok_brace_close,
-    tok_include,  // 'import' keyword (legacy name kept for compatibility)
+    tok_include,  // 'import' keyword
     tok_comma,
     tok_string,
     tok_semicolon,
@@ -68,7 +68,8 @@ enum TokenKind
     tok_mod_eq,   // %=
     tok_null,     // null
     tok_fat_arrow, // =>
-    tok_underscore // _ (wildcard)
+    tok_underscore, // _ (wildcard)
+    tok_module     // module declaration
 };
 
 struct SourceLocation
