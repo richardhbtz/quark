@@ -851,7 +851,9 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
     LLVMValueRef storage;
     
     if (currentBB) {
-                storage = LLVMBuildAlloca(builder_, varType, vdecl->name.c_str());
+        // Create alloca in entry block to avoid stack growth in loops
+        LLVMValueRef currentFn = LLVMGetBasicBlockParent(currentBB);
+        storage = createEntryBlockAlloca(currentFn, varType, vdecl->name.c_str());
         
         if (declaredType == QuarkType::Struct) {
                                     if (auto* callExpr = dynamic_cast<CallExprAST*>(vdecl->init.get())) {
@@ -1079,7 +1081,9 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST* as)
         LLVMValueRef storage;
         
         if (currentBB) {
-                        storage = LLVMBuildAlloca(builder_, varType, as->varName.c_str());
+            // Create alloca in entry block to avoid stack growth in loops
+            LLVMValueRef currentFn = LLVMGetBasicBlockParent(currentBB);
+            storage = createEntryBlockAlloca(currentFn, varType, as->varName.c_str());
             LLVMBuildStore(builder_, val, storage);
         } else {
                         if (qType == QuarkType::String) {
@@ -2468,7 +2472,8 @@ void StatementCodeGen::genForStmt(ForStmt* forStmt, LLVMValueRef putsFn)
         endVal = expressionCodeGen_->genExprInt(forStmt->rangeExpr.get());
     }
 
-    LLVMValueRef loopVar = LLVMBuildAlloca(builder_, int32_t_, forStmt->var.c_str());
+    // Create loop variable in entry block to avoid stack growth on each iteration
+    LLVMValueRef loopVar = createEntryBlockAlloca(currentFn, int32_t_, forStmt->var.c_str());
     LLVMBuildStore(builder_, startVal, loopVar);
     
         (*g_named_values_)[forStmt->var] = loopVar;
@@ -2668,6 +2673,7 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt* arrayAssign)
     if (arrayTypeInfo.type == QuarkType::Array) {
                 elementType = expressionCodeGen_->quarkTypeToLLVMType(arrayTypeInfo.elementType);
         
+        
                 if (arrayTypeInfo.elementType == QuarkType::Struct && g_struct_types_) {
                                     elementType = int8ptr_t_;
         }
@@ -2683,4 +2689,29 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt* arrayAssign)
     
     if (verbose_)
         printf("[codegen] completed array assignment\n");
+}
+
+LLVMValueRef StatementCodeGen::createEntryBlockAlloca(LLVMValueRef function, LLVMTypeRef type, const char* name)
+{
+    // Get the entry block of the function
+    LLVMBasicBlockRef entryBlock = LLVMGetEntryBasicBlock(function);
+    
+    // Create a new builder for inserting the alloca
+    LLVMBuilderRef allocaBuilder = LLVMCreateBuilderInContext(ctx_);
+    
+    // Position at the beginning of the entry block
+    LLVMValueRef firstInstr = LLVMGetFirstInstruction(entryBlock);
+    if (firstInstr) {
+        LLVMPositionBuilderBefore(allocaBuilder, firstInstr);
+    } else {
+        LLVMPositionBuilderAtEnd(allocaBuilder, entryBlock);
+    }
+    
+    // Create the alloca instruction
+    LLVMValueRef alloca = LLVMBuildAlloca(allocaBuilder, type, name);
+    
+    // Clean up the temporary builder
+    LLVMDisposeBuilder(allocaBuilder);
+    
+    return alloca;
 }

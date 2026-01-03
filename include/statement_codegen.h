@@ -102,4 +102,7 @@ private:
     
     // Helper for nested member assignment - returns pointer to the nested struct field
     LLVMValueRef genNestedMemberPtr(MemberAccessExpr* memberAccess);
+    
+    // Helper to create alloca in entry block (avoids stack growth in loops)
+    LLVMValueRef createEntryBlockAlloca(LLVMValueRef function, LLVMTypeRef type, const char* name);
 };
