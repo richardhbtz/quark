@@ -16,7 +16,29 @@ enum class QuarkType {
     Struct,
     Pointer,    // Pointer to other types
     Array,      // Array of other types
-    Null        // Null literal type
+    Null,       // Null literal type
+    FunctionPointer // Function pointer type: fn(args) -> ret
+};
+
+// Represents a function pointer type signature
+struct FunctionPointerTypeInfo {
+    std::string returnType;                    // Return type as string
+    std::vector<std::string> paramTypes;       // Parameter types as strings
+    
+    // Generate a canonical string representation
+    std::string toString() const {
+        std::string result = "fn(";
+        for (size_t i = 0; i < paramTypes.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += paramTypes[i];
+        }
+        result += ") -> " + returnType;
+        return result;
+    }
+    
+    bool operator==(const FunctionPointerTypeInfo& other) const {
+        return returnType == other.returnType && paramTypes == other.paramTypes;
+    }
 };
 
 struct TypeInfo {
@@ -26,10 +48,13 @@ struct TypeInfo {
     QuarkType elementType;       // For array types, the type of elements
     size_t arraySize;            // For array types, the size of the array (0 = dynamic)
     std::string pointerTypeName; // For pointer types, the full pointer signature (e.g., "int*", "Foo**")
+    std::shared_ptr<FunctionPointerTypeInfo> funcPtrInfo; // For function pointer types
 
     TypeInfo(QuarkType t = QuarkType::Unknown, SourceLocation loc = {}, std::string sName = "", 
-             QuarkType elemType = QuarkType::Unknown, size_t arrSize = 0, std::string ptrType = "")
-        : type(t), location(loc), structName(sName), elementType(elemType), arraySize(arrSize), pointerTypeName(ptrType) {}
+             QuarkType elemType = QuarkType::Unknown, size_t arrSize = 0, std::string ptrType = "",
+             std::shared_ptr<FunctionPointerTypeInfo> fpInfo = nullptr)
+        : type(t), location(loc), structName(sName), elementType(elemType), arraySize(arrSize), 
+          pointerTypeName(ptrType), funcPtrInfo(fpInfo) {}
 };
 
 // Utility functions for integer type handling
@@ -114,8 +139,14 @@ public:
             case QuarkType::Struct: return "struct";
             case QuarkType::Pointer: return "pointer";
             case QuarkType::Array: return "array";
+            case QuarkType::FunctionPointer: return "fn";
             default: return "unknown";
         }
+    }
+    
+    // Check if a type string represents a function pointer: fn(args) -> ret
+    static bool isFunctionPointerType(const std::string& typeName) {
+        return typeName.size() >= 2 && typeName.substr(0, 2) == "fn";
     }
 };
 

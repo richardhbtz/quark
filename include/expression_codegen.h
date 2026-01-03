@@ -41,6 +41,7 @@ public:
     QuarkType getVariableType(const std::string &name);
     void declareVariable(const std::string &name, QuarkType type, const SourceLocation &loc, const std::string &structName = "", const std::string &pointerType = "");
     void declareVariable(const std::string &name, QuarkType type, const SourceLocation &loc, QuarkType elementType, size_t arraySize);
+    void declareVariable(const std::string &name, const TypeInfo &typeInfo); // For function pointers and complex types
     void declareFunctionType(const std::string &name, QuarkType returnType, const SourceLocation &loc, const std::string &structName = "");
     void declareFunctionType(const std::string &name, QuarkType returnType, const SourceLocation &loc, QuarkType elementType, size_t arraySize);
     
@@ -72,6 +73,9 @@ public:
     LLVMValueRef genAddressOf(AddressOfExpr *addrOf);
     LLVMValueRef genDereference(DereferenceExpr *deref);
     LLVMValueRef genRange(RangeExpr *range);
+    
+    // Function pointer expression generation
+    LLVMValueRef genIndirectCall(IndirectCallExpr *indirectCall);
     
     // Array expression generation
     LLVMValueRef genArrayLiteral(ArrayLiteralExpr *arrayLiteral);

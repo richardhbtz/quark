@@ -2,6 +2,7 @@
 #include "../include/compilation_context.h"
 #include "../include/error_reporter.h"
 #include "../include/source_manager.h"
+#include "../include/codegen_types.h"
 #include <stdexcept>
 #include <cstdio>
 #include <vector>
@@ -274,8 +275,30 @@ void StatementCodeGen::genFunctionStmt(FunctionAST* f, LLVMValueRef putsFn)
     
     if (verbose_)
         printf("[codegen] clearing variables for function scope\n");
+    
+    // Save globals (extern variables) before clearing - they have LLVMGlobalValueKind
+    std::unordered_map<std::string, LLVMValueRef> savedGlobalVars;
+    std::unordered_map<std::string, LLVMTypeRef> savedGlobalTypes;
+    for (const auto& pair : *g_named_values_) {
+        if (LLVMIsAGlobalVariable(pair.second)) {
+            savedGlobalVars[pair.first] = pair.second;
+            auto typeIt = g_named_types_->find(pair.first);
+            if (typeIt != g_named_types_->end()) {
+                savedGlobalTypes[pair.first] = typeIt->second;
+            }
+        }
+    }
+    
     g_named_values_->clear();
     g_named_types_->clear();
+    
+    // Restore global/extern variables
+    for (const auto& pair : savedGlobalVars) {
+        (*g_named_values_)[pair.first] = pair.second;
+    }
+    for (const auto& pair : savedGlobalTypes) {
+        (*g_named_types_)[pair.first] = pair.second;
+    }
     
         if (verbose_)
         printf("[codegen] setting up %zu parameters\n", f->params.size());
@@ -552,14 +575,22 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
     }
     
         QuarkType declaredType;
+    std::shared_ptr<FunctionPointerTypeInfo> inferredFpInfo = nullptr;
     if (vdecl->type == "auto") {
                 declaredType = initType.type;
+        if (initType.type == QuarkType::FunctionPointer) {
+            // Preserve function pointer info from inferred type
+            inferredFpInfo = initType.funcPtrInfo;
+        }
         if (verbose_)
             printf("[codegen] inferred type for %s: %d\n", vdecl->name.c_str(), (int)declaredType);
     } else if (vdecl->type == "str") {
         declaredType = QuarkType::String;
     } else if (vdecl->type == "bool") {
         declaredType = QuarkType::Boolean;
+    } else if (IntegerTypeUtils::isFunctionPointerType(vdecl->type)) {
+        // Function pointer type: fn(args) -> ret
+        declaredType = QuarkType::FunctionPointer;
     } else if (!vdecl->type.empty() && vdecl->type.back() == '*') {
                 declaredType = QuarkType::Pointer;
     } else if (vdecl->type.size() > 2 && vdecl->type.substr(vdecl->type.size() - 2) == "[]") {
@@ -582,7 +613,14 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
         if (initType.type != QuarkType::Unknown && declaredType != initType.type) {
             bool bothIntegers = IntegerTypeUtils::isIntegerType(declaredType) && IntegerTypeUtils::isIntegerType(initType.type);
             bool bothNumeric = IntegerTypeUtils::isNumericType(declaredType) && IntegerTypeUtils::isNumericType(initType.type);
-            if (!bothIntegers && !bothNumeric) {
+            // Allow FunctionPointer to be assigned to void* (Pointer)
+            bool fnPtrToVoidPtr = (initType.type == QuarkType::FunctionPointer && 
+                                   declaredType == QuarkType::Pointer && 
+                                   vdecl->type == "void*");
+            // Allow null to be assigned to void* (Pointer)
+            bool nullToVoidPtr = (initType.type == QuarkType::Null && 
+                                  declaredType == QuarkType::Pointer);
+            if (!bothIntegers && !bothNumeric && !fnPtrToVoidPtr && !nullToVoidPtr) {
                 auto typeToStr = [](QuarkType t) {
                     if (IntegerTypeUtils::isIntegerType(t)) return std::string("integer");
                     if (IntegerTypeUtils::isFloatingType(t)) {
@@ -608,6 +646,37 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
         case QuarkType::String:
             actualType = "str";
             varType = int8ptr_t_;
+            {
+                // Check if we're at global scope (no current basic block)
+                LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder_);
+                if (!currentBB) {
+                    // Global string variable - must be initialized with a literal
+                    if (auto *strExpr = dynamic_cast<StringExprAST *>(vdecl->init.get())) {
+                        // Create the string constant first to get the properly typed array
+                        unsigned strLen = static_cast<unsigned int>(strExpr->value.length() + 1);
+                        LLVMValueRef initVal = LLVMConstString(strExpr->value.c_str(), strLen - 1, 0);
+                        LLVMTypeRef strArrayType = LLVMTypeOf(initVal);  // Get the actual array type from the constant
+                        
+                        std::string dataName = vdecl->name + "_data";
+                        
+                        LLVMValueRef globalStrData = LLVMAddGlobal(module_, strArrayType, dataName.c_str());
+                        LLVMSetInitializer(globalStrData, initVal);
+                        LLVMSetLinkage(globalStrData, LLVMPrivateLinkage);
+                        LLVMSetGlobalConstant(globalStrData, 1);  // Mark as constant
+                        
+                        // Store the data global directly - when accessed, it acts as a char*
+                        (*g_named_values_)[vdecl->name] = globalStrData;
+                        (*g_named_types_)[vdecl->name] = strArrayType;
+                        expressionCodeGen_->declareVariable(vdecl->name, declaredType, vdecl->init->location);
+                        
+                        if (verbose_)
+                            printf("[codegen] completed global string variable declaration: %s\n", vdecl->name.c_str());
+                        return; // Early return for global string
+                    } else {
+                        throw std::runtime_error("only string literals supported for global string variables");
+                    }
+                }
+            }
             val = expressionCodeGen_->genExpr(vdecl->init.get());
             break;
         case QuarkType::Boolean:
@@ -698,6 +767,70 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             varType = int8ptr_t_;
             val = expressionCodeGen_->genExpr(vdecl->init.get());
             break;
+        case QuarkType::FunctionPointer: {
+            // Function pointer type - stored as void* (i8*)
+            actualType = vdecl->type;
+            varType = int8ptr_t_; // Function pointers are just void*
+            val = expressionCodeGen_->genExpr(vdecl->init.get());
+            
+            std::shared_ptr<FunctionPointerTypeInfo> fpInfo;
+            
+            // If we inferred the type from the initializer, use that info
+            if (inferredFpInfo) {
+                fpInfo = inferredFpInfo;
+            } else {
+                // Parse the function pointer type to extract signature info
+                fpInfo = std::make_shared<FunctionPointerTypeInfo>();
+                // Parse format: fn(int, str) -> int
+                std::string typeStr = vdecl->type;
+                if (typeStr.size() > 2 && typeStr.substr(0, 2) == "fn" && typeStr[2] == '(') {
+                    size_t parenClose = typeStr.find(')');
+                    if (parenClose != std::string::npos) {
+                        // Extract parameter types
+                        std::string paramsStr = typeStr.substr(3, parenClose - 3);
+                        if (!paramsStr.empty()) {
+                            size_t pos = 0, lastPos = 0;
+                            while ((pos = paramsStr.find(',', lastPos)) != std::string::npos) {
+                                std::string param = paramsStr.substr(lastPos, pos - lastPos);
+                                // Trim whitespace
+                                size_t start = param.find_first_not_of(" \t");
+                                size_t end = param.find_last_not_of(" \t");
+                                if (start != std::string::npos && end != std::string::npos) {
+                                    fpInfo->paramTypes.push_back(param.substr(start, end - start + 1));
+                                }
+                                lastPos = pos + 1;
+                            }
+                            // Last parameter
+                            std::string param = paramsStr.substr(lastPos);
+                            size_t start = param.find_first_not_of(" \t");
+                            size_t end = param.find_last_not_of(" \t");
+                            if (start != std::string::npos && end != std::string::npos) {
+                                fpInfo->paramTypes.push_back(param.substr(start, end - start + 1));
+                            }
+                        }
+                        
+                        // Extract return type (after "->")
+                        size_t arrowPos = typeStr.find("->", parenClose);
+                        if (arrowPos != std::string::npos) {
+                            std::string retStr = typeStr.substr(arrowPos + 2);
+                            size_t start = retStr.find_first_not_of(" \t");
+                            size_t end = retStr.find_last_not_of(" \t");
+                            if (start != std::string::npos && end != std::string::npos) {
+                                fpInfo->returnType = retStr.substr(start, end - start + 1);
+                            }
+                        } else {
+                            fpInfo->returnType = "void";
+                        }
+                    }
+                }
+            }
+            
+            // Declare the variable with function pointer type info
+            std::string typeStr = (vdecl->type == "auto" && fpInfo) ? fpInfo->toString() : vdecl->type;
+            TypeInfo fpTypeInfo(QuarkType::FunctionPointer, vdecl->location, "", QuarkType::Unknown, 0, typeStr, fpInfo);
+            expressionCodeGen_->declareVariable(vdecl->name, fpTypeInfo);
+            break;
+        }
         case QuarkType::Char:
             actualType = "char";
             varType = LLVMInt8TypeInContext(ctx_);
@@ -811,9 +944,9 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             }
         } else {
             LLVMBuildStore(builder_, val, storage);
-            }
-        } else {
-                if (declaredType == QuarkType::String) {
+        }
+    } else {
+            if (declaredType == QuarkType::String) {
             if (auto *strExpr = dynamic_cast<StringExprAST *>(vdecl->init.get())) {
                                 LLVMValueRef globalStrData = LLVMAddGlobal(module_, 
                                                           LLVMArrayType(LLVMInt8TypeInContext(ctx_), static_cast<unsigned int>(strExpr->value.length() + 1)), 
@@ -988,7 +1121,10 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST* as)
                 if (existingType != QuarkType::Unknown && valueType.type != QuarkType::Unknown) {
             if (existingType != valueType.type) {
                 bool bothIntegers = IntegerTypeUtils::isIntegerType(existingType) && IntegerTypeUtils::isIntegerType(valueType.type);
-                if (!bothIntegers) {
+                // Allow FunctionPointer to be assigned to void* (Pointer)
+                bool fnPtrToVoidPtr = (valueType.type == QuarkType::FunctionPointer && 
+                                       existingType == QuarkType::Pointer);
+                if (!bothIntegers && !fnPtrToVoidPtr) {
                     auto typeToStr = [](QuarkType t) {
                         if (IntegerTypeUtils::isIntegerType(t)) return std::string("integer");
                         return IntegerTypeUtils::quarkTypeToString(t);
@@ -1478,6 +1614,137 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST* externFunc)
     
     if (verbose_)
         printf("[codegen] declared extern function: %s\n", externFunc->name.c_str());
+}
+
+void StatementCodeGen::collectExternVariables(StmtAST *stmt, std::vector<ExternVarAST*> &externVars)
+{
+    if (verbose_)
+        printf("[codegen] collectExternVariables called\n");
+        
+    if (auto *externVar = dynamic_cast<ExternVarAST *>(stmt))
+    {
+        if (verbose_)
+            printf("[codegen] found extern variable: %s\n", externVar->name.c_str());
+        externVars.push_back(externVar);
+    }
+    else if (auto *inc = dynamic_cast<IncludeStmt *>(stmt))
+    {
+        if (verbose_)
+            printf("[codegen] found include statement with %zu statements\n", inc->stmts.size());
+        for (auto &s : inc->stmts)
+        {
+            collectExternVariables(s.get(), externVars);
+        }
+    }
+}
+
+void StatementCodeGen::declareExternVariable(ExternVarAST* externVar)
+{
+    if (!g_named_values_ || !g_named_types_)
+        throw std::runtime_error("global symbol tables not initialized");
+    
+    // Check if already declared
+    if (g_named_values_->find(externVar->name) != g_named_values_->end()) {
+        if (verbose_)
+            printf("[codegen] extern variable '%s' already declared, skipping\n", externVar->name.c_str());
+        return;
+    }
+        
+    if (verbose_)
+        printf("[codegen] declaring extern variable: %s with type %s\n", 
+               externVar->name.c_str(), externVar->typeName.c_str());
+    
+    // Map the type string to an LLVM type
+    auto mapType = [this](const std::string& type) -> LLVMTypeRef {
+        if (!type.empty() && type.back() == '*') {
+            size_t stars = 0;
+            for (size_t i = type.size(); i > 0 && type[i - 1] == '*'; --i) {
+                stars++;
+            }
+            std::string base = type.substr(0, type.size() - stars);
+
+            LLVMTypeRef baseTy = nullptr;
+            if (base == "str") {
+                baseTy = int8ptr_t_;
+            } else if (base == "void" || base == "char") {
+                baseTy = LLVMInt8TypeInContext(ctx_);
+            } else if (base == "int") {
+                baseTy = int32_t_;
+            } else if (base == "float") {
+                baseTy = float_t_;
+            } else if (base == "double") {
+                baseTy = double_t_;
+            } else if (base == "bool") {
+                baseTy = bool_t_;
+            } else if (g_struct_types_) {
+                auto sit = g_struct_types_->find(base);
+                if (sit != g_struct_types_->end()) {
+                    baseTy = sit->second;
+                }
+            }
+            if (!baseTy) {
+                baseTy = LLVMInt8TypeInContext(ctx_);
+            }
+            LLVMTypeRef ty = baseTy;
+            for (size_t i = 0; i < stars; ++i) {
+                ty = LLVMPointerType(ty, 0);
+            }
+            return ty;
+        }
+        if (type == "int") return int32_t_;
+        else if (type == "float") return float_t_;
+        else if (type == "double") return double_t_;
+        else if (type == "str" || type == "char*") return int8ptr_t_;
+        else if (type == "bool") return bool_t_;
+        else if (type == "void") return LLVMVoidTypeInContext(ctx_);
+        else {
+            if (g_struct_types_) {
+                auto sit = g_struct_types_->find(type);
+                if (sit != g_struct_types_->end()) {
+                    return sit->second;
+                }
+            }
+            if (verbose_)
+                printf("[codegen] unknown type '%s' for extern var, defaulting to void*\n", type.c_str());
+            return LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+        }
+    };
+    
+    // Map type string to QuarkType
+    auto mapToQuarkType = [](const std::string& type) -> QuarkType {
+        if (type == "int") return QuarkType::Int;
+        else if (type == "float") return QuarkType::Float;
+        else if (type == "double") return QuarkType::Double;
+        else if (type == "str" || type == "char*") return QuarkType::String;
+        else if (type == "bool") return QuarkType::Boolean;
+        else if (type == "void") return QuarkType::Void;
+        else if (type.find('*') != std::string::npos) return QuarkType::Pointer;
+        return QuarkType::Unknown;
+    };
+    
+    LLVMTypeRef varType = mapType(externVar->typeName);
+    QuarkType quarkType = mapToQuarkType(externVar->typeName);
+    
+    // Add external global variable
+    LLVMValueRef globalVar = LLVMAddGlobal(module_, varType, externVar->name.c_str());
+    LLVMSetLinkage(globalVar, LLVMExternalLinkage);
+    LLVMSetExternallyInitialized(globalVar, 1);  // Externally initialized
+    
+    // Store in the named values so it can be accessed
+    (*g_named_values_)[externVar->name] = globalVar;
+    (*g_named_types_)[externVar->name] = varType;
+    
+    // Register the type info for the expression codegen
+    if (externVar->funcPtrInfo) {
+        quarkType = QuarkType::FunctionPointer;
+        expressionCodeGen_->declareVariable(externVar->name, 
+            TypeInfo(quarkType, {}, "", QuarkType::Unknown, 0, externVar->typeName, externVar->funcPtrInfo));
+    } else {
+        expressionCodeGen_->declareVariable(externVar->name, quarkType, {}, "", externVar->typeName);
+    }
+    
+    if (verbose_)
+        printf("[codegen] declared extern variable: %s with quark type %d\n", externVar->name.c_str(), (int)quarkType);
 }
 
 void StatementCodeGen::createStructType(StructDefStmt* structDef)

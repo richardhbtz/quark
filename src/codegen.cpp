@@ -371,7 +371,8 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
         LLVMValueRef putsFn = LLVMGetNamedFunction(module_, "puts");
         for (auto &s : program->stmts)
         {
-            if (!dynamic_cast<FunctionAST *>(s.get()))
+            // Skip functions and global variable declarations (which were already processed)
+            if (!dynamic_cast<FunctionAST *>(s.get()) && !dynamic_cast<VarDeclStmt *>(s.get()))
                 statementCodeGen_->genStmt(s.get(), putsFn);
         }
 
@@ -438,6 +439,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
 
         std::vector<FunctionAST *> allFunctions;
     std::vector<ExternFunctionAST *> allExternFunctions;
+    std::vector<ExternVarAST *> allExternVariables;
     for (auto &s : program->stmts)
     {
         if (verbose_)
@@ -445,11 +447,12 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
                 statementCodeGen_->predeclareExternStructs(s.get());
         statementCodeGen_->collectFunctions(s.get(), allFunctions);
         statementCodeGen_->collectExternFunctions(s.get(), allExternFunctions);
+        statementCodeGen_->collectExternVariables(s.get(), allExternVariables);
     }
 
     if (verbose_)
-        printf("[codegen] collected %zu functions and %zu extern functions\n",
-               allFunctions.size(), allExternFunctions.size());
+        printf("[codegen] collected %zu functions, %zu extern functions, and %zu extern variables\n",
+               allFunctions.size(), allExternFunctions.size(), allExternVariables.size());
 
     if (verbose_)
         printf("[codegen] declaring LLVM functions\n");
@@ -469,21 +472,41 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         statementCodeGen_->declareExternFunction(externFunc);
     }
 
+    // Declare extern variables (e.g., GLEW function pointers)
+    for (auto *externVar : allExternVariables)
+    {
+        statementCodeGen_->declareExternVariable(externVar);
+    }
+
     // Declare user functions
     declareFunctions(allFunctions);
 
     if (verbose_)
         printf("[codegen] finished declaring all functions, now processing statements\n");
 
-                    for (auto &s : program->stmts)
+    // First pass: Process global variable declarations so they're available to functions
+    for (auto &s : program->stmts)
     {
-        if (dynamic_cast<FunctionAST *>(s.get()) || dynamic_cast<IncludeStmt *>(s.get()) || dynamic_cast<ExternFunctionAST *>(s.get()) || dynamic_cast<ImplStmt *>(s.get()) || dynamic_cast<StructDefStmt *>(s.get()))
+        if (auto* varDecl = dynamic_cast<VarDeclStmt*>(s.get()))
         {
-                        statementCodeGen_->genStmt(s.get(), putsFn);
+            // Generate global variable declarations first
+            if (verbose_)
+                printf("[codegen] processing global variable declaration: %s\n", varDecl->name.c_str());
+            statementCodeGen_->genStmt(s.get(), putsFn);
         }
-        else
+    }
+
+    // Second pass: Process functions, extern declarations, etc.
+    for (auto &s : program->stmts)
+    {
+        if (dynamic_cast<FunctionAST *>(s.get()) || dynamic_cast<IncludeStmt *>(s.get()) || dynamic_cast<ExternFunctionAST *>(s.get()) || dynamic_cast<ExternVarAST *>(s.get()) || dynamic_cast<ImplStmt *>(s.get()) || dynamic_cast<StructDefStmt *>(s.get()))
         {
-                                    // point.
+            statementCodeGen_->genStmt(s.get(), putsFn);
+        }
+        else if (!dynamic_cast<VarDeclStmt*>(s.get()))
+        {
+            // Skip non-function statements (except VarDeclStmt which was already processed)
+            // They will be deferred to main generation point.
             if (verbose_)
                 printf("[codegen] deferring top-level statement to main\n");
         }
@@ -500,7 +523,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
     bool hasUserMain = (g_function_map_.find("main") != g_function_map_.end());
     bool hasTopLevelStmts = false;
     for (auto &s : program->stmts)
-        if (!dynamic_cast<FunctionAST *>(s.get()) && !dynamic_cast<ImplStmt *>(s.get()) && !dynamic_cast<IncludeStmt *>(s.get()) && !dynamic_cast<ExternFunctionAST *>(s.get()))
+        if (!dynamic_cast<FunctionAST *>(s.get()) && !dynamic_cast<ImplStmt *>(s.get()) && !dynamic_cast<IncludeStmt *>(s.get()) && !dynamic_cast<ExternFunctionAST *>(s.get()) && !dynamic_cast<ExternVarAST *>(s.get()) && !dynamic_cast<StructDefStmt *>(s.get()) && !dynamic_cast<VarDeclStmt *>(s.get()))
             hasTopLevelStmts = true;
 
     generateMainFunction(program, hasUserMain, hasTopLevelStmts);

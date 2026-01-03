@@ -7,6 +7,7 @@
 
 class ErrorReporter;
 class SourceManager;
+struct FunctionPointerTypeInfo;
 
 struct ASTNode
 {
@@ -34,6 +35,12 @@ struct NumberExprAST : ExprAST
 {
     double value;
     explicit NumberExprAST(double v) : value(v) {}
+};
+
+struct FloatLiteralExpr : ExprAST
+{
+    float value;
+    explicit FloatLiteralExpr(float v) : value(v) {}
 };
 
 struct BinaryExprAST : ExprAST
@@ -110,6 +117,16 @@ struct ExternFunctionAST : StmtAST {
 struct ExternStructDeclAST : StmtAST {
     std::string name;
     explicit ExternStructDeclAST(const std::string &n) : name(n) {}
+};
+
+// External variable declaration: extern "C" { int* varName; } or for function pointers
+struct ExternVarAST : StmtAST {
+    std::string name;
+    std::string typeName;  // e.g., "int*", "void*", or function pointer type like "fn(int,int)->int"
+    std::shared_ptr<FunctionPointerTypeInfo> funcPtrInfo;  // If this is a function pointer type
+    ExternVarAST(const std::string &n, const std::string &type,
+                 std::shared_ptr<FunctionPointerTypeInfo> fpInfo = nullptr)
+        : name(n), typeName(type), funcPtrInfo(fpInfo) {}
 };
 
 struct CallExprAST : ExprAST {
@@ -332,6 +349,36 @@ struct ArrayAssignStmt : StmtAST {
         : array(std::move(arr)), index(std::move(idx)), value(std::move(val)) {}
 };
 
+// Function pointer type: fn(param_types) -> return_type
+struct FunctionPointerTypeAST {
+    std::string returnType;
+    std::vector<std::string> paramTypes;
+    
+    std::string toString() const {
+        std::string result = "fn(";
+        for (size_t i = 0; i < paramTypes.size(); ++i) {
+            if (i > 0) result += ", ";
+            result += paramTypes[i];
+        }
+        result += ") -> " + returnType;
+        return result;
+    }
+};
+
+// Function reference expression: &functionName (gets function pointer)
+struct FunctionRefExpr : ExprAST {
+    std::string functionName;
+    explicit FunctionRefExpr(const std::string& name) : functionName(name) {}
+};
+
+// Indirect function call through function pointer: fnPtr(args)
+struct IndirectCallExpr : ExprAST {
+    std::unique_ptr<ExprAST> callee;  // The function pointer expression
+    std::vector<std::unique_ptr<ExprAST>> args;
+    IndirectCallExpr(std::unique_ptr<ExprAST> c, std::vector<std::unique_ptr<ExprAST>>&& a)
+        : callee(std::move(c)), args(std::move(a)) {}
+};
+
 class ParseError : public std::runtime_error
 {
 public:
@@ -386,13 +433,20 @@ private:
             case tok_float: return "float";
             case tok_double: return "double";
             case tok_char: return "char";
+            case tok_void: return "void";
             case tok_identifier: return token.text;
             default: return token.text;
         }
     }
 
     // Parse type including array syntax: int[], str[], etc.
+    // Also handles function pointer types: fn(int, str) -> int
     std::string parseTypeString() {
+        // Check for function pointer type: fn(params) -> returnType
+        if (cur_.kind == tok_fn) {
+            return parseFunctionPointerTypeString();
+        }
+        
         std::string baseType = getTypeString(cur_);
         next();
         
@@ -414,6 +468,54 @@ private:
         
         return baseType;
     }
+    
+    // Parse function pointer type: fn(param_types) -> return_type
+    std::string parseFunctionPointerTypeString() {
+        if (cur_.kind != tok_fn) {
+            throw ParseError("expected 'fn' in function pointer type", cur_.location);
+        }
+        next(); // consume 'fn'
+        
+        if (cur_.kind != tok_paren_open) {
+            throw ParseError("expected '(' after 'fn' in function pointer type", cur_.location);
+        }
+        next(); // consume '('
+        
+        std::string result = "fn(";
+        bool first = true;
+        
+        while (cur_.kind != tok_paren_close && cur_.kind != tok_eof) {
+            if (!first) {
+                if (cur_.kind != tok_comma) {
+                    throw ParseError("expected ',' between parameter types in function pointer type", cur_.location);
+                }
+                next(); // consume ','
+                result += ", ";
+            }
+            first = false;
+            
+            // Parse parameter type (recursively handles nested fn types)
+            std::string paramType = parseTypeString();
+            result += paramType;
+        }
+        
+        if (cur_.kind != tok_paren_close) {
+            throw ParseError("expected ')' after parameter types in function pointer type", cur_.location);
+        }
+        next(); // consume ')'
+        result += ")";
+        
+        // Parse -> return_type
+        if (cur_.kind != tok_arrow) {
+            throw ParseError("expected '->' after parameters in function pointer type", cur_.location);
+        }
+        next(); // consume '->'
+        
+        std::string returnType = parseTypeString();
+        result += " -> " + returnType;
+        
+        return result;
+    }
 
     // Helper function to check if token is a type token
     bool isTypeToken(const Token& token) {
@@ -422,6 +524,8 @@ private:
                token.kind == tok_str ||
                token.kind == tok_float ||
                token.kind == tok_double ||
-               token.kind == tok_char;
+               token.kind == tok_char ||
+               token.kind == tok_fn ||
+               token.kind == tok_void;
     }
 };

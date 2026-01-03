@@ -38,6 +38,7 @@ enum TokenKind
     tok_double,  // double type (64-bit floating point)
     tok_char,    // char type (8-bit character)
     tok_char_literal, // character literal 'x'
+    tok_float_literal, // float literal with f suffix (e.g., 1.0f)
     tok_unknown,
     tok_and,
     tok_or,
@@ -71,7 +72,20 @@ enum TokenKind
     tok_null,     // null
     tok_fat_arrow, // =>
     tok_underscore, // _ (wildcard)
-    tok_module     // module declaration
+    tok_module,     // module declaration
+    tok_fn,         // fn keyword for function pointer types
+    tok_void,       // void keyword
+    // Bitwise operators
+    tok_bitwise_or,   // |
+    tok_bitwise_xor,  // ^
+    tok_bitwise_not,  // ~
+    tok_shift_left,   // <<
+    tok_shift_right,  // >>
+    tok_bitwise_or_eq,  // |=
+    tok_bitwise_xor_eq, // ^=
+    tok_bitwise_and_eq, // &=
+    tok_shift_left_eq,  // <<=
+    tok_shift_right_eq  // >>=
 };
 
 struct SourceLocation

@@ -304,12 +304,18 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 else {
                                         if (!isTypeToken(cur_) && cur_.kind != tok_identifier)
                         throw ParseError("expected return type or 'struct' in extern C block", cur_.location);
-                    std::string returnType = parseTypeString();
+                    std::string typeName = parseTypeString();
                     if (cur_.kind != tok_identifier)
-                        throw ParseError("expected function name in extern C block", cur_.location);
-                    std::string funcName = cur_.text; next();
-                    if (cur_.kind != tok_paren_open)
-                        throw ParseError("expected '(' after function name", cur_.location);
+                        throw ParseError("expected function or variable name in extern C block", cur_.location);
+                    std::string name = cur_.text; next();
+                    
+                    // Check if this is a function declaration (has '(') or variable declaration (ends with ';')
+                    if (cur_.kind == tok_semicolon) {
+                        // This is an extern variable declaration: type name;
+                        next();
+                        inc->stmts.push_back(std::make_unique<ExternVarAST>(name, typeName));
+                    } else if (cur_.kind == tok_paren_open) {
+                        // This is an extern function declaration: type name(params);
                     next();
                     std::vector<std::pair<std::string, std::string>> params;
                     if (cur_.kind != tok_paren_close) {
@@ -317,10 +323,35 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                             // Variadic ...
                             if (cur_.kind == tok_range) { next(); if (cur_.kind == tok_dot) next(); params.emplace_back("...", "..."); break; }
                             if (cur_.kind == tok_dot) { int dots=0; while (cur_.kind==tok_dot && dots<3){ next(); dots++; } params.emplace_back("...","..."); break; }
-                            if (!isTypeToken(cur_) && cur_.kind != tok_identifier)
-                                throw ParseError("expected parameter type", cur_.location);
-                            std::string pt = parseTypeString();
-                            params.emplace_back("", pt);
+                            
+                            // Check if it's name: type or just type
+                            if (cur_.kind == tok_identifier) {
+                                // Could be "name: type" or just "TypeName"
+                                std::string first = cur_.text;
+                                next();
+                                if (cur_.kind == tok_colon) {
+                                    // It's "name: type" format
+                                    next(); // consume ':'
+                                    if (!isTypeToken(cur_) && cur_.kind != tok_identifier)
+                                        throw ParseError("expected parameter type after ':'", cur_.location);
+                                    std::string pt = parseTypeString();
+                                    params.emplace_back(first, pt);
+                                } else {
+                                    // It was just a type name (like "MyStruct"), need to handle pointer suffix
+                                    std::string paramTypeName = first;
+                                    while (cur_.kind == tok_mul) {
+                                        paramTypeName += "*";
+                                        next();
+                                    }
+                                    params.emplace_back("", paramTypeName);
+                                }
+                            } else if (isTypeToken(cur_)) {
+                                // It's a builtin type keyword
+                                std::string pt = parseTypeString();
+                                params.emplace_back("", pt);
+                            } else {
+                                throw ParseError("expected parameter name or type", cur_.location);
+                            }
                             if (cur_.kind == tok_comma) { next(); continue; }
                             break;
                         }
@@ -331,7 +362,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                     if (cur_.kind != tok_semicolon)
                         throw ParseError("expected ';' after extern function declaration", cur_.location);
                     next();
-                    inc->stmts.push_back(std::make_unique<ExternFunctionAST>(funcName, returnType, params));
+                        inc->stmts.push_back(std::make_unique<ExternFunctionAST>(name, typeName, params));
+                    } else {
+                        throw ParseError("expected '(' for function or ';' for variable declaration", cur_.location);
+                    }
                 }
             }
             
@@ -1165,6 +1199,27 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
         else if (cur_.kind == tok_mul) op = '*';
         else if (cur_.kind == tok_div) op = '/';
         else if (cur_.kind == tok_mod) op = '%';
+        // Bitwise operators
+        else if (cur_.kind == tok_ampersand) {
+            op = 'A';  // 'A' for bitwise AND
+            if (verbose_) printf("[parser] recognized & (bitwise AND) operator\n");
+        }
+        else if (cur_.kind == tok_bitwise_or) {
+            op = 'O';  // 'O' for bitwise OR
+            if (verbose_) printf("[parser] recognized | (bitwise OR) operator\n");
+        }
+        else if (cur_.kind == tok_bitwise_xor) {
+            op = 'X';  // 'X' for bitwise XOR
+            if (verbose_) printf("[parser] recognized ^ (bitwise XOR) operator\n");
+        }
+        else if (cur_.kind == tok_shift_left) {
+            op = 'L';  // 'L' for shift left
+            if (verbose_) printf("[parser] recognized << (shift left) operator\n");
+        }
+        else if (cur_.kind == tok_shift_right) {
+            op = 'R';  // 'R' for shift right
+            if (verbose_) printf("[parser] recognized >> (shift right) operator\n");
+        }
         else if (cur_.kind == tok_dot) {
                         next(); // consume '.'
             if (cur_.kind != tok_identifier)
@@ -1250,6 +1305,14 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
                 auto operand = parseExpression(39);
         return std::make_unique<UnaryExprAST>(op, std::move(operand));
     }
+    // Bitwise NOT (~)
+    if (cur_.kind == tok_bitwise_not)
+    {
+        char op = '~';
+        next();
+        auto operand = parseExpression(39);
+        return std::make_unique<UnaryExprAST>(op, std::move(operand));
+    }
     
         if (cur_.kind == tok_ampersand)
     {
@@ -1270,6 +1333,12 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         auto n = std::make_unique<NumberExprAST>(cur_.numberValue);
         next();
         return n;
+    }
+    if (cur_.kind == tok_float_literal)
+    {
+        auto f = std::make_unique<FloatLiteralExpr>(static_cast<float>(cur_.numberValue));
+        next();
+        return f;
     }
     if (cur_.kind == tok_string)
     {
@@ -1446,12 +1515,24 @@ int Parser::getTokPrecedence()
         return 5;
     if (cur_.kind == tok_and)
         return 10;
+    // Bitwise OR (|) - precedence 6 (between || and &&)
+    if (cur_.kind == tok_bitwise_or)
+        return 6;
+    // Bitwise XOR (^) - precedence 7 (between | and &)
+    if (cur_.kind == tok_bitwise_xor)
+        return 7;
+    // Bitwise AND (&) - precedence 8 (between ^ and ==)
+    if (cur_.kind == tok_ampersand)
+        return 8;
             if (cur_.kind == tok_range)
         return 12;
     if (cur_.kind == tok_eq || cur_.kind == tok_ne)
         return 15;
     if (cur_.kind == tok_lt || cur_.kind == tok_gt || cur_.kind == tok_le || cur_.kind == tok_ge)
         return 17;
+    // Shift operators - precedence 18 (between comparisons and +/-)
+    if (cur_.kind == tok_shift_left || cur_.kind == tok_shift_right)
+        return 18;
     if (cur_.kind == tok_plus || cur_.kind == tok_minus)
         return 20;
     if (cur_.kind == tok_mul || cur_.kind == tok_div || cur_.kind == tok_mod)

@@ -142,6 +142,13 @@ Token Lexer::next()
                 printf("[lexer] module declaration at %d:%d\n", tokenStart.line, tokenStart.column);
             return tok;
         }
+        
+        if (s == "fn") {
+            tok.kind = tok_fn;
+            if (verbose_)
+                printf("[lexer] fn keyword at %d:%d\n", tokenStart.line, tokenStart.column);
+            return tok;
+        }
 
         if (s == "in") {
             tok.kind = tok_in;
@@ -175,6 +182,7 @@ Token Lexer::next()
         else if (s == "break") tok.kind = tok_break;
         else if (s == "continue") tok.kind = tok_continue;
         else if (s == "null") tok.kind = tok_null;
+        else if (s == "void") tok.kind = tok_void;
         else {
             tok.kind = tok_identifier;
             if (verbose_)
@@ -239,11 +247,20 @@ Token Lexer::next()
         }
         std::string lexeme = src_.substr(start, idx_ - start);
         double v = std::stod(lexeme);
-        Token tok{ tok_number, v, "" };
+        
+        // Check for 'f' or 'F' suffix to indicate float literal
+        bool isFloatLiteral = false;
+        if (idx_ < src_.size() && (src_[idx_] == 'f' || src_[idx_] == 'F')) {
+            isFloatLiteral = true;
+            advancePosition(src_[idx_]);
+            ++idx_;
+        }
+        
+        Token tok{ isFloatLiteral ? tok_float_literal : tok_number, v, "" };
         tok.location = tokenStart;
-                tok.text = lexeme;
+        tok.text = lexeme + (isFloatLiteral ? "f" : "");
         if (verbose_)
-            printf("[lexer] number %s (%g) at %d:%d\n", lexeme.c_str(), v, tokenStart.line, tokenStart.column);
+            printf("[lexer] %s %s (%g) at %d:%d\n", isFloatLiteral ? "float" : "number", lexeme.c_str(), v, tokenStart.line, tokenStart.column);
         return tok;
     }
     if (c == '"')
@@ -359,15 +376,6 @@ Token Lexer::next()
         if (verbose_) printf("[lexer] .. at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle single & (but not &&)
-    if (c == '&' && !(idx_ + 1 < src_.size() && src_[idx_ + 1] == '&')) {
-        advancePosition(c);
-        ++idx_;
-        Token tok{ tok_ampersand, 0.0, "&" };
-        tok.location = tokenStart;
-        if (verbose_) printf("[lexer] & at %d:%d\n", tokenStart.line, tokenStart.column);
-        return tok;
-    }
     if (c == '&' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '&') {
         advancePosition(c);
         ++idx_; // consume first '&'
@@ -378,6 +386,26 @@ Token Lexer::next()
         if (verbose_) printf("[lexer] && at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
+    // Handle &= (bitwise AND assignment)
+    if (c == '&' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_bitwise_and_eq, 0.0, "&=" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] &= at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle single & (bitwise AND)
+    if (c == '&') {
+        advancePosition(c);
+        ++idx_;
+        Token tok{ tok_ampersand, 0.0, "&" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] & at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
     if (c == '|' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '|') {
         advancePosition(c);
         ++idx_; // consume first '|'
@@ -386,6 +414,55 @@ Token Lexer::next()
         Token tok{ tok_or, 0.0, "||" };
         tok.location = tokenStart;
         if (verbose_) printf("[lexer] || at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle |= (bitwise OR assignment)
+    if (c == '|' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_bitwise_or_eq, 0.0, "|=" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] |= at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle single | (bitwise OR)
+    if (c == '|') {
+        advancePosition(c);
+        ++idx_;
+        Token tok{ tok_bitwise_or, 0.0, "|" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] | at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle ^= (bitwise XOR assignment)
+    if (c == '^' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_bitwise_xor_eq, 0.0, "^=" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] ^= at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle ^ (bitwise XOR)
+    if (c == '^') {
+        advancePosition(c);
+        ++idx_;
+        Token tok{ tok_bitwise_xor, 0.0, "^" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] ^ at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle ~ (bitwise NOT)
+    if (c == '~') {
+        advancePosition(c);
+        ++idx_;
+        Token tok{ tok_bitwise_not, 0.0, "~" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] ~ at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
     if (c == '=' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '>') {
@@ -436,6 +513,54 @@ Token Lexer::next()
         Token tok{ tok_minus_eq, 0.0, "-=" };
         tok.location = tokenStart;
         if (verbose_) printf("[lexer] -= at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle <<= (shift left assignment)
+    if (c == '<' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '<') {
+        if (idx_ + 2 < src_.size() && src_[idx_ + 2] == '=') {
+            advancePosition(c);
+            ++idx_;
+            advancePosition(src_[idx_]);
+            ++idx_;
+            advancePosition(src_[idx_]);
+            ++idx_;
+            Token tok{ tok_shift_left_eq, 0.0, "<<=" };
+            tok.location = tokenStart;
+            if (verbose_) printf("[lexer] <<= at %d:%d\n", tokenStart.line, tokenStart.column);
+            return tok;
+        }
+        // Handle << (shift left)
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_shift_left, 0.0, "<<" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] << at %d:%d\n", tokenStart.line, tokenStart.column);
+        return tok;
+    }
+    // Handle >>= (shift right assignment)
+    if (c == '>' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '>') {
+        if (idx_ + 2 < src_.size() && src_[idx_ + 2] == '=') {
+            advancePosition(c);
+            ++idx_;
+            advancePosition(src_[idx_]);
+            ++idx_;
+            advancePosition(src_[idx_]);
+            ++idx_;
+            Token tok{ tok_shift_right_eq, 0.0, ">>=" };
+            tok.location = tokenStart;
+            if (verbose_) printf("[lexer] >>= at %d:%d\n", tokenStart.line, tokenStart.column);
+            return tok;
+        }
+        // Handle >> (shift right)
+        advancePosition(c);
+        ++idx_;
+        advancePosition(src_[idx_]);
+        ++idx_;
+        Token tok{ tok_shift_right, 0.0, ">>" };
+        tok.location = tokenStart;
+        if (verbose_) printf("[lexer] >> at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
     if (c == '<' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=') {

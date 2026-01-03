@@ -28,8 +28,10 @@ public:
     void genStmt(StmtAST *stmt, LLVMValueRef putsFn);
     void collectFunctions(StmtAST *stmt, std::vector<FunctionAST*> &functions);
     void collectExternFunctions(StmtAST *stmt, std::vector<ExternFunctionAST*> &externFunctions);
+    void collectExternVariables(StmtAST *stmt, std::vector<ExternVarAST*> &externVars);
     void collectStructDefs(StmtAST *stmt, std::vector<StructDefStmt*> &structDefs);
     void declareExternFunction(ExternFunctionAST* externFunc);
+    void declareExternVariable(ExternVarAST* externVar);
     void processStructDef(StructDefStmt* structDef); // Public wrapper for genStructDefStmt
     // Ensure extern C opaque structs are registered before function declarations
     void predeclareExternStructs(StmtAST* stmt);

@@ -25,6 +25,7 @@ struct Symbol {
     std::string typeName;
     QuarkType resolvedType;
     SourceLocation declLocation;
+    TypeInfo type; // Full type info including funcPtrInfo for function pointers
     
     bool isMutable = true;
     bool isInitialized = false;
@@ -107,6 +108,7 @@ private:
     void collectStructDef(StructDefStmt* stmt);
     void collectFunction(FunctionAST* func);
     void collectExternFunction(ExternFunctionAST* func);
+    void collectExternVariable(ExternVarAST* var);
     void collectImplBlock(ImplStmt* impl);
     
     void analyzeStmt(StmtAST* stmt);

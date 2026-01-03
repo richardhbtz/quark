@@ -249,6 +249,10 @@ void SemanticAnalyzer::collectDeclarations(ProgramAST *program)
             {
                 collectExternFunction(externFunc);
             }
+            else if (auto *externVar = dynamic_cast<ExternVarAST *>(stmt.get()))
+            {
+                collectExternVariable(externVar);
+            }
             else if (auto *impl = dynamic_cast<ImplStmt *>(stmt.get()))
             {
                 collectImplBlock(impl);
@@ -358,6 +362,21 @@ void SemanticAnalyzer::collectExternFunction(ExternFunctionAST *func)
     sym.resolvedType = resolveType(func->returnType).type;
 
     symbolTable_.globalScope()->declare(func->name, sym);
+}
+
+void SemanticAnalyzer::collectExternVariable(ExternVarAST *var)
+{
+    Symbol sym;
+    sym.kind = Symbol::Kind::Variable;
+    sym.name = var->name;
+    sym.typeName = var->typeName;
+    sym.declLocation = var->location;
+    sym.isExtern = true;
+    sym.isInitialized = true;  // Extern variables are initialized externally
+    sym.type = resolveType(var->typeName);  // Set full TypeInfo (including .type for pointer checks)
+    sym.resolvedType = sym.type.type;
+
+    symbolTable_.globalScope()->declare(var->name, sym);
 }
 
 void SemanticAnalyzer::collectImplBlock(ImplStmt *impl)
@@ -584,6 +603,11 @@ void SemanticAnalyzer::analyzeVarDecl(VarDeclStmt *stmt)
     }
 
     TypeInfo targetType = resolveType(declaredType);
+    
+    // For function pointer types inferred from initializer, preserve the funcPtrInfo
+    if (initType.type == QuarkType::FunctionPointer && initType.funcPtrInfo) {
+        targetType.funcPtrInfo = initType.funcPtrInfo;
+    }
 
     if (stmt->init && !isTypeCompatible(targetType, initType))
     {
@@ -601,6 +625,7 @@ void SemanticAnalyzer::analyzeVarDecl(VarDeclStmt *stmt)
     varSym.elementType = targetType.elementType;
     varSym.isInitialized = (stmt->init != nullptr);
     varSym.declLocation = stmt->location;
+    varSym.type = targetType; // Store full TypeInfo including funcPtrInfo
 
     if (verbose_)
     {
@@ -914,6 +939,12 @@ TypeInfo SemanticAnalyzer::analyzeExpr(ExprAST *expr)
         return TypeInfo(QuarkType::Double, expr->location);
     }
 
+    // Handle float literal (e.g., 1.0f)
+    if (auto *f = dynamic_cast<FloatLiteralExpr *>(expr))
+    {
+        return TypeInfo(QuarkType::Float, expr->location);
+    }
+
     if (auto *str = dynamic_cast<StringExprAST *>(expr))
     {
         return TypeInfo(QuarkType::String, expr->location);
@@ -1025,6 +1056,24 @@ TypeInfo SemanticAnalyzer::analyzeCall(CallExprAST *expr)
     if (!func)
     {
         error("undefined function '" + expr->callee + "'", expr->location, "E125", expr->callee.size());
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
+
+    // Check if this is a function pointer variable (either FunctionPointer type or void*)
+    if (func->kind == Symbol::Kind::Variable && 
+        (func->type.type == QuarkType::FunctionPointer || func->type.type == QuarkType::Pointer))
+    {
+        // It's a function pointer call - analyze arguments
+        for (auto &arg : expr->args)
+        {
+            analyzeExpr(arg.get());
+        }
+        // Return the function pointer's return type if we have it
+        if (func->type.funcPtrInfo) {
+            QuarkType retType = IntegerTypeUtils::stringToQuarkType(func->type.funcPtrInfo->returnType);
+            return TypeInfo(retType, expr->location);
+        }
+        // For void* we don't know the return type
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
 
@@ -1475,6 +1524,18 @@ TypeInfo SemanticAnalyzer::analyzeBinary(BinaryExprAST *expr)
         }
         return TypeInfo(QuarkType::Boolean, expr->location);
 
+    // Bitwise operators - require integer operands and return integer
+    case 'A': // Bitwise AND (&)
+    case 'O': // Bitwise OR (|)
+    case 'X': // Bitwise XOR (^)
+    case 'L': // Shift left (<<)
+    case 'R': // Shift right (>>)
+        if (lhsType.type != QuarkType::Int || rhsType.type != QuarkType::Int)
+        {
+            error("bitwise operators require integer operands", expr->location, "E145");
+        }
+        return TypeInfo(QuarkType::Int, expr->location);
+
     default:
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
@@ -1499,6 +1560,13 @@ TypeInfo SemanticAnalyzer::analyzeUnary(UnaryExprAST *expr)
             error("logical not requires boolean or integer operand", expr->location, "E137");
         }
         return TypeInfo(QuarkType::Boolean, expr->location);
+
+    case '~':  // Bitwise NOT
+        if (operandType.type != QuarkType::Int)
+        {
+            error("bitwise NOT requires integer operand", expr->location, "E146");
+        }
+        return TypeInfo(QuarkType::Int, expr->location);
 
     default:
         return operandType;
@@ -1620,6 +1688,20 @@ TypeInfo SemanticAnalyzer::analyzeCast(CastExpr *expr)
 
 TypeInfo SemanticAnalyzer::analyzeAddressOf(AddressOfExpr *expr)
 {
+    // Check if the operand is a function name
+    if (auto *varExpr = dynamic_cast<VariableExprAST *>(expr->operand.get())) {
+        Symbol *sym = symbolTable_.lookup(varExpr->name);
+        if (sym && sym->kind == Symbol::Kind::Function) {
+            // This is &functionName - return function pointer type
+            auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
+            fpInfo->returnType = sym->returnType.empty() ? "void" : sym->returnType;
+            for (const auto& param : sym->functionParams) {
+                fpInfo->paramTypes.push_back(param.second);
+            }
+            return TypeInfo(QuarkType::FunctionPointer, expr->location, "", QuarkType::Unknown, 0, fpInfo->toString(), fpInfo);
+        }
+    }
+    
     TypeInfo operandType = analyzeExpr(expr->operand.get());
 
     TypeInfo ptrType(QuarkType::Pointer, expr->location);
@@ -1688,6 +1770,12 @@ bool SemanticAnalyzer::canImplicitlyConvert(const TypeInfo &from, const TypeInfo
         return true;
     if (from.type == QuarkType::Boolean && to.type == QuarkType::Int)
         return true;
+    
+    // Allow function pointers to be assigned to void*
+    if (from.type == QuarkType::FunctionPointer && to.type == QuarkType::Pointer &&
+        to.elementType == QuarkType::Void) {
+        return true;
+    }
 
     return false;
 }
@@ -1713,6 +1801,54 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
         return TypeInfo(QuarkType::Boolean);
     if (typeName == "void")
         return TypeInfo(QuarkType::Void);
+    
+    // Handle function pointer types: fn(args) -> ret
+    if (IntegerTypeUtils::isFunctionPointerType(typeName))
+    {
+        auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
+        // Parse format: fn(int, str) -> int
+        if (typeName.size() > 2 && typeName.substr(0, 2) == "fn" && typeName[2] == '(') {
+            size_t parenClose = typeName.find(')');
+            if (parenClose != std::string::npos) {
+                // Extract parameter types
+                std::string paramsStr = typeName.substr(3, parenClose - 3);
+                if (!paramsStr.empty()) {
+                    size_t pos = 0, lastPos = 0;
+                    while ((pos = paramsStr.find(',', lastPos)) != std::string::npos) {
+                        std::string param = paramsStr.substr(lastPos, pos - lastPos);
+                        // Trim whitespace
+                        size_t start = param.find_first_not_of(" \t");
+                        size_t end = param.find_last_not_of(" \t");
+                        if (start != std::string::npos && end != std::string::npos) {
+                            fpInfo->paramTypes.push_back(param.substr(start, end - start + 1));
+                        }
+                        lastPos = pos + 1;
+                    }
+                    // Last parameter
+                    std::string param = paramsStr.substr(lastPos);
+                    size_t start = param.find_first_not_of(" \t");
+                    size_t end = param.find_last_not_of(" \t");
+                    if (start != std::string::npos && end != std::string::npos) {
+                        fpInfo->paramTypes.push_back(param.substr(start, end - start + 1));
+                    }
+                }
+                
+                // Extract return type (after "->")
+                size_t arrowPos = typeName.find("->", parenClose);
+                if (arrowPos != std::string::npos) {
+                    std::string retStr = typeName.substr(arrowPos + 2);
+                    size_t start = retStr.find_first_not_of(" \t");
+                    size_t end = retStr.find_last_not_of(" \t");
+                    if (start != std::string::npos && end != std::string::npos) {
+                        fpInfo->returnType = retStr.substr(start, end - start + 1);
+                    }
+                } else {
+                    fpInfo->returnType = "void";
+                }
+            }
+        }
+        return TypeInfo(QuarkType::FunctionPointer, {}, "", QuarkType::Unknown, 0, typeName, fpInfo);
+    }
 
     if (typeName.size() > 2 && typeName.substr(typeName.size() - 2) == "[]")
     {
@@ -1795,6 +1931,11 @@ std::string SemanticAnalyzer::typeToString(const TypeInfo &type)
     }
     case QuarkType::Pointer:
         return type.pointerTypeName.empty() ? "ptr" : type.pointerTypeName;
+    case QuarkType::FunctionPointer:
+        if (type.funcPtrInfo) {
+            return type.funcPtrInfo->toString();
+        }
+        return type.pointerTypeName.empty() ? "fn" : type.pointerTypeName;
     default:
         return "unknown";
     }
