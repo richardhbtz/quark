@@ -797,6 +797,15 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                     return TypeInfo(QuarkType::Void, expr->location);
                 }
 
+                // Memory allocation functions return void* (Pointer type)
+                if (call->callee == "alloc" || call->callee == "realloc" || 
+                    call->callee == "memset" || call->callee == "memcpy") {
+                    return TypeInfo(QuarkType::Pointer, expr->location, "", QuarkType::Unknown, 0, "void*");
+                }
+                if (call->callee == "free") {
+                    return TypeInfo(QuarkType::Void, expr->location);
+                }
+
                                 if (bi->returnType == int32_t_) {
                     return TypeInfo(QuarkType::Int, expr->location);
                 } else if (bi->returnType == LLVMFloatTypeInContext(ctx_)) {

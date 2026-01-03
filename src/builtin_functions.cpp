@@ -24,6 +24,7 @@ void BuiltinFunctions::registerAllBuiltins() {
     registerMathFunctions();
     registerMapFunctions();
     registerFormatFunctions();
+    registerMemoryFunctions();
     // sleep(ms: int) -> void (cross-platform)
     registerBuiltin("sleep", void_t_, {int32_t_}, /*isVariadic*/ false,
         [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
@@ -385,6 +386,118 @@ void BuiltinFunctions::registerArrayFunctions() {
             LLVMValueRef base = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), data, af_idx, 1, "arr_base");
             LLVMBuildCall2(builder_, LLVMGlobalGetValueType(free_fn_), free_fn_, &base, 1, "");
             return nullptr;
+        });
+}
+
+void BuiltinFunctions::registerMemoryFunctions() {
+    LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+    LLVMTypeRef i64_t = LLVMInt64TypeInContext(ctx_);
+    
+    // alloc(size: int) -> void*
+    // Allocates `size` bytes of memory and returns a pointer to it
+    registerBuiltin("alloc", i8p, {int32_t_}, false,
+        [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
+            if (args.empty()) {
+                return LLVMConstNull(i8p);
+            }
+            LLVMValueRef size = args[0];
+            // Call malloc(size)
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &size, 1, "alloc_ptr");
+        });
+    
+    // free(ptr: void*) -> void
+    // Frees memory previously allocated with alloc
+    registerBuiltin("free", void_t_, {i8p}, false,
+        [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
+            if (args.empty()) {
+                return nullptr;
+            }
+            LLVMValueRef ptr = args[0];
+            // Cast to i8* if needed
+            LLVMTypeRef ptrType = LLVMTypeOf(ptr);
+            if (ptrType != i8p) {
+                ptr = LLVMBuildPointerCast(builder_, ptr, i8p, "free_cast");
+            }
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(free_fn_), free_fn_, &ptr, 1, "");
+            return nullptr;
+        });
+    
+    // alloc_array<T>(count: int) pattern - allocates count * sizeof(T) bytes
+    // This is a generic alloc that takes byte size, user computes element_count * element_size
+    // Example: alloc(100 * 4) for 100 floats (4 bytes each)
+    
+    // realloc(ptr: void*, new_size: int) -> void*
+    // Reallocates memory to a new size
+    registerBuiltin("realloc", i8p, {i8p, int32_t_}, false,
+        [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
+            if (args.size() < 2) {
+                return LLVMConstNull(i8p);
+            }
+            LLVMValueRef ptr = args[0];
+            LLVMValueRef newSize = args[1];
+            
+            // Ensure ptr is i8*
+            LLVMTypeRef ptrType = LLVMTypeOf(ptr);
+            if (ptrType != i8p) {
+                ptr = LLVMBuildPointerCast(builder_, ptr, i8p, "realloc_cast");
+            }
+            
+            // Declare realloc if not already declared
+            LLVMValueRef reallocFn = LLVMGetNamedFunction(module_, "realloc");
+            if (!reallocFn) {
+                LLVMTypeRef paramTypes[] = {i8p, int32_t_};
+                LLVMTypeRef funcType = LLVMFunctionType(i8p, paramTypes, 2, 0);
+                reallocFn = LLVMAddFunction(module_, "realloc", funcType);
+            }
+            
+            LLVMValueRef callArgs[] = {ptr, newSize};
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(reallocFn), reallocFn, callArgs, 2, "realloc_ptr");
+        });
+    
+    // memset(ptr: void*, value: int, size: int) -> void*
+    // Sets `size` bytes of memory starting at `ptr` to `value`
+    registerBuiltin("memset", i8p, {i8p, int32_t_, int32_t_}, false,
+        [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
+            if (args.size() < 3) {
+                return LLVMConstNull(i8p);
+            }
+            LLVMValueRef ptr = args[0];
+            LLVMValueRef value = args[1];
+            LLVMValueRef size = args[2];
+            
+            // Ensure ptr is i8*
+            LLVMTypeRef ptrType = LLVMTypeOf(ptr);
+            if (ptrType != i8p) {
+                ptr = LLVMBuildPointerCast(builder_, ptr, i8p, "memset_cast");
+            }
+            
+            LLVMValueRef callArgs[] = {ptr, value, size};
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(memset_fn_), memset_fn_, callArgs, 3, "memset_res");
+        });
+    
+    // memcpy(dest: void*, src: void*, size: int) -> void*
+    // Copies `size` bytes from `src` to `dest`
+    registerBuiltin("memcpy", i8p, {i8p, i8p, int32_t_}, false,
+        [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef>& args) -> LLVMValueRef {
+            if (args.size() < 3) {
+                return LLVMConstNull(i8p);
+            }
+            LLVMValueRef dest = args[0];
+            LLVMValueRef src = args[1];
+            LLVMValueRef size = args[2];
+            
+            // Ensure pointers are i8*
+            LLVMTypeRef destType = LLVMTypeOf(dest);
+            LLVMTypeRef srcType = LLVMTypeOf(src);
+            if (destType != i8p) {
+                dest = LLVMBuildPointerCast(builder_, dest, i8p, "memcpy_dest_cast");
+            }
+            if (srcType != i8p) {
+                src = LLVMBuildPointerCast(builder_, src, i8p, "memcpy_src_cast");
+            }
+            
+            LLVMValueRef callArgs[] = {dest, src, size};
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(memcpy_fn_), memcpy_fn_, callArgs, 3, "memcpy_res");
         });
 }
 
@@ -763,6 +876,16 @@ void BuiltinFunctions::registerTypesWithExpressionCodeGen(ExpressionCodeGen* exp
             continue;
         }
         if (name == "map_set" || name == "map_remove" || name == "map_free") {
+            exprGen->declareFunctionType(name, QuarkType::Void, SourceLocation());
+            continue;
+        }
+        
+        // Memory functions return void* (Pointer type)
+        if (name == "alloc" || name == "realloc" || name == "memset" || name == "memcpy") {
+            exprGen->declareFunctionType(name, QuarkType::Pointer, SourceLocation());
+            continue;
+        }
+        if (name == "free") {
             exprGen->declareFunctionType(name, QuarkType::Void, SourceLocation());
             continue;
         }

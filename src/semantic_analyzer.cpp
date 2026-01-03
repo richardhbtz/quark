@@ -150,6 +150,13 @@ void SemanticAnalyzer::registerBuiltinFunctions()
     addBuiltin("clamp_i32", "int", {{"x", "int"}, {"lo", "int"}, {"hi", "int"}}, false);
     addBuiltin("clamp_f64", "double", {{"x", "double"}, {"lo", "double"}, {"hi", "double"}}, false);
     addBuiltin("clamp", "double", {}, true);
+
+    // Memory management builtins
+    addBuiltin("alloc", "void*", {{"size", "int"}}, false);
+    addBuiltin("free", "void", {{"ptr", "void*"}}, false);
+    addBuiltin("realloc", "void*", {{"ptr", "void*"}, {"new_size", "int"}}, false);
+    addBuiltin("memset", "void*", {{"ptr", "void*"}, {"value", "int"}, {"size", "int"}}, false);
+    addBuiltin("memcpy", "void*", {{"dest", "void*"}, {"src", "void*"}, {"size", "int"}}, false);
 }
 
 bool SemanticAnalyzer::analyze(ProgramAST *program)
