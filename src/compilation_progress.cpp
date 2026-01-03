@@ -12,12 +12,12 @@ CompilationProgress::CompilationProgress(bool enableAnimation)
       currentStage_(Stage::LEXING), overallProgress_(0.0f) {
     
     // Initialize stage information
-    stages_[Stage::LEXING] = {"Lexical Analysis", "📝", false, false, 0.0f};
-    stages_[Stage::PARSING] = {"Parsing", "🔍", false, false, 0.0f};
-    stages_[Stage::CODE_GENERATION] = {"Code Generation", "⚙️", false, false, 0.0f};
-    stages_[Stage::OPTIMIZATION] = {"Optimization", "🚀", false, false, 0.0f};
-    stages_[Stage::LINKING] = {"Linking", "🔗", false, false, 0.0f};
-    stages_[Stage::COMPLETE] = {"Complete", "✅", false, false, 0.0f};
+    stages_[Stage::LEXING] = {"Lexical Analysis", "✓", false, false, 0.0f};
+    stages_[Stage::PARSING] = {"Parsing", "✓", false, false, 0.0f};
+    stages_[Stage::CODE_GENERATION] = {"Code Generation", "✓", false, false, 0.0f};
+    stages_[Stage::OPTIMIZATION] = {"Optimization", "✓", false, false, 0.0f};
+    stages_[Stage::LINKING] = {"Linking", "✓", false, false, 0.0f};
+    stages_[Stage::COMPLETE] = {"Complete", "✓", false, false, 0.0f};
 }
 
 CompilationProgress::~CompilationProgress() {
@@ -175,13 +175,13 @@ Element CompilationProgress::createStageList() {
     return vbox(std::move(stageElements));
 }
 
-Element CompilationProgress::createOverallDisplay() {
+Element CompilationProgress::createOverallDisplay(bool showProgressBar) {
     Elements elements;
     
     // Title
     elements.push_back(
         hbox({
-            text("🔨 Compiling ") | bold,
+            text("› Compiling ") | bold,
             text(filename_) | color(Color::Cyan)
         })
     );
@@ -192,14 +192,16 @@ Element CompilationProgress::createOverallDisplay() {
     elements.push_back(createStageList());
     
     elements.push_back(text("")); // Empty line
-    
+
     // Overall progress
-    elements.push_back(
-        hbox({
-            text("Overall: "),
-            createProgressBar(overallProgress_)
-        })
-    );
+    if (showProgressBar) {
+        elements.push_back(
+            hbox({
+                text("Overall: "),
+                createProgressBar(overallProgress_)
+            })
+        );
+    }
     
     // Elapsed time
     elements.push_back(
@@ -210,7 +212,7 @@ Element CompilationProgress::createOverallDisplay() {
     if (!errorMessage_.empty()) {
         elements.push_back(text("")); // Empty line
         elements.push_back(
-            text("❌ Error: " + errorMessage_) | color(Color::Red) | bold
+            text("✗ Error: " + errorMessage_) | color(Color::Red) | bold
         );
     }
     
@@ -227,7 +229,7 @@ void CompilationProgress::renderLoop() {
             std::cout << "\033[J";         }
         
         // Render current state
-        auto document = createOverallDisplay();
+        auto document = createOverallDisplay(true);
         auto screen = Screen::Create(Dimension::Full(), Dimension::Fit(document));
         Render(screen, document);
         
@@ -243,16 +245,20 @@ void CompilationProgress::renderLoop() {
         std::this_thread::sleep_for(std::chrono::milliseconds(frameDelay));
     }
     
-        if (lastLineCount > 0) {
+    if (lastLineCount > 0) {
         std::cout << "\033[" << lastLineCount << "A";
-        std::cout << "\033[J";     }
-    
+        std::cout << "\033[J";
+        std::cout << "\r" << std::flush;
+    }
+
+    bool showProgressBar = true;
     if (overallProgress_ >= 1.0f && errorMessage_.empty()) {
         currentStage_ = Stage::COMPLETE;
         stages_[Stage::COMPLETE].completed = true;
+        showProgressBar = false; // hide bar on successful completion
     }
-    
-    auto document = createOverallDisplay();
+
+    auto document = createOverallDisplay(showProgressBar);
     auto screen = Screen::Create(Dimension::Full(), Dimension::Fit(document));
     Render(screen, document);
     screen.Print();

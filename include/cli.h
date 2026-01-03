@@ -33,19 +33,17 @@ namespace Colors
     const std::string BRIGHT_WHITE = "\033[97m";
 }
 
-// Emoji indicators for different message types
-namespace Emojis
+// Unicode indicators for different message types
+namespace Symbols
 {
-    const std::string SUCCESS = "✅";
-    const std::string ERROR = "❌";
-    const std::string WARNING = "⚠️";
-    const std::string INFO = "📝";
-    const std::string BUILDING = "🔨";
-    const std::string ROCKET = "🚀";
-    const std::string GEAR = "⚙️";
-    const std::string CHECKMARK = "✓";
-    const std::string CROSS = "✗";
+    const std::string SUCCESS = "✓";
+    const std::string ERROR = "✗";
+    const std::string WARNING = "!";
+    const std::string INFO = "·";
+    const std::string PROGRESS = "›";
+    const std::string DEBUG = "~";
     const std::string ARROW = "→";
+    const std::string BULLET = "•";
 }
 
 enum class OutputLevel

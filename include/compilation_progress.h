@@ -70,7 +70,7 @@ private:
     void renderLoop();
     ftxui::Element createProgressBar(float progress);
     ftxui::Element createStageList();
-    ftxui::Element createOverallDisplay();
+    ftxui::Element createOverallDisplay(bool showProgressBar = true);
     std::string getStageName(Stage stage) const;
     std::string getStageIcon(Stage stage, bool completed) const;
     std::string getElapsedTime() const;

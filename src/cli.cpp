@@ -92,24 +92,24 @@ std::string CLI::getTypeColor(MessageType type) const {
 
 std::string CLI::getTypePrefix(MessageType type) const {
     if (!unicodeEnabled_) {
-                switch (type) {
-            case MessageType::SUCCESS: return "[OK] ";
-            case MessageType::ERROR: return "[ERR] ";
-            case MessageType::WARNING: return "[WARN] ";
-            case MessageType::INFO: return "[INFO] ";
-            case MessageType::PROGRESS: return "[..] ";
-            case MessageType::DEBUG: return "[DBG] ";
+        switch (type) {
+            case MessageType::SUCCESS: return "ok ";
+            case MessageType::ERROR: return "err ";
+            case MessageType::WARNING: return "warn ";
+            case MessageType::INFO: return ". ";
+            case MessageType::PROGRESS: return "> ";
+            case MessageType::DEBUG: return "~ ";
             default: return "";
         }
     }
 
     switch (type) {
-        case MessageType::SUCCESS: return Emojis::SUCCESS + " ";
-        case MessageType::ERROR: return Emojis::ERROR + " ";
-        case MessageType::WARNING: return Emojis::WARNING + " ";
-        case MessageType::INFO: return Emojis::INFO + " ";
-        case MessageType::PROGRESS: return Emojis::GEAR + " ";
-        case MessageType::DEBUG: return Emojis::ARROW + " ";
+        case MessageType::SUCCESS: return Symbols::SUCCESS + " ";
+        case MessageType::ERROR: return Symbols::ERROR + " ";
+        case MessageType::WARNING: return Symbols::WARNING + " ";
+        case MessageType::INFO: return Symbols::INFO + " ";
+        case MessageType::PROGRESS: return Symbols::PROGRESS + " ";
+        case MessageType::DEBUG: return Symbols::DEBUG + " ";
         default: return "";
     }
 }
@@ -138,16 +138,16 @@ std::string CLI::formatMessage(const std::string& message, MessageType type) {
     std::string color = getTypeColor(type);
 
     if (colorEnabled_) {
-                return colorize(prefix, color) + message;
+        return colorize(prefix, color) + message;
     } else {
-                std::string textPrefix;
+        std::string textPrefix;
         switch (type) {
-            case MessageType::SUCCESS: textPrefix = "[SUCCESS] "; break;
-            case MessageType::ERROR: textPrefix = "[ERROR] "; break;
-            case MessageType::WARNING: textPrefix = "[WARNING] "; break;
-            case MessageType::INFO: textPrefix = "[INFO] "; break;
-            case MessageType::PROGRESS: textPrefix = "[PROGRESS] "; break;
-            case MessageType::DEBUG: textPrefix = "[DEBUG] "; break;
+            case MessageType::SUCCESS: textPrefix = "ok "; break;
+            case MessageType::ERROR: textPrefix = "err "; break;
+            case MessageType::WARNING: textPrefix = "warn "; break;
+            case MessageType::INFO: textPrefix = ". "; break;
+            case MessageType::PROGRESS: textPrefix = "> "; break;
+            case MessageType::DEBUG: textPrefix = "~ "; break;
             default: textPrefix = ""; break;
         }
         return textPrefix + message;
@@ -289,53 +289,53 @@ void CLI::finishProgress(const std::string& message, bool success) {
 }
 
 void CLI::printVersion() {
-    println(colorize("Quark", Colors::BOLD + Colors::BRIGHT_MAGENTA) + " " +
+    printlnRaw(colorize("Quark", Colors::BOLD + Colors::BRIGHT_MAGENTA) + " " +
             colorize("0.1.0", Colors::BRIGHT_CYAN));
-    println("A modern systems programming language");
+    printlnRaw(colorize("A modern systems programming language", Colors::GRAY));
 }
 
 void CLI::printUsage() {
-    println(colorize("Usage:", Colors::BOLD) + " quark [OPTIONS] [FILE]");
-    println("");
-    println(colorize("Arguments:", Colors::BOLD));
-    println("  [FILE]    Input file to compile");
-    println("");
-    println(colorize("Options:", Colors::BOLD));
-    println("  -h, --help       Show this help message");
-    println("  -V, --version    Show version information");
-    println("  -v, --verbose    Enable verbose output");
-    println("  -q, --quiet      Suppress non-essential output");
-    println("  --debug          Enable debug output");
-    println("  -o <FILE>        Specify output file");
-    println("  --no-color       Disable colored output");
-    println("  --emit-llvm      Emit LLVM IR (default)");
-    println("  --emit-asm       Emit assembly code");
-    println("  -O, -O1          Enable basic optimizations (O1 level)");
-    println("  -O0              Disable optimizations");
-    println("  -O2              Enable standard optimizations (O2 level)");
-    println("  -O3              Enable aggressive optimizations (O3 level)");
-    println("  -L <DIR>         Add a library search path (alias: --libpath DIR)");
-    println("  -l <LIB>         Link against an additional library (repeatable)");
+    printlnRaw(colorize("Usage:", Colors::BOLD) + " quark [OPTIONS] [FILE]");
+    printlnRaw("");
+    printlnRaw(colorize("Arguments:", Colors::BOLD));
+    printlnRaw("  [FILE]    Input file to compile");
+    printlnRaw("");
+    printlnRaw(colorize("Options:", Colors::BOLD));
+    printlnRaw("  -h, --help       Show this help message");
+    printlnRaw("  -V, --version    Show version information");
+    printlnRaw("  -v, --verbose    Enable verbose output");
+    printlnRaw("  -q, --quiet      Suppress non-essential output");
+    printlnRaw("  --debug          Enable debug output");
+    printlnRaw("  -o <FILE>        Specify output file");
+    printlnRaw("  --no-color       Disable colored output");
+    printlnRaw("  --emit-llvm      Emit LLVM IR (default)");
+    printlnRaw("  --emit-asm       Emit assembly code");
+    printlnRaw("  -O, -O1          Enable basic optimizations (O1 level)");
+    printlnRaw("  -O0              Disable optimizations");
+    printlnRaw("  -O2              Enable standard optimizations (O2 level)");
+    printlnRaw("  -O3              Enable aggressive optimizations (O3 level)");
+    printlnRaw("  -L <DIR>         Add a library search path (alias: --libpath DIR)");
+    printlnRaw("  -l <LIB>         Link against an additional library (repeatable)");
 }
 
 void CLI::printHelp() {
     printVersion();
-    println("");
+    printlnRaw("");
     printUsage();
-    println("");
-    println(colorize("Examples:", Colors::BOLD));
-    println("  quark main.k              Compile main.k to main");
-    println("  quark -o program main.k   Compile to program");
-    println("  quark -v main.k           Compile with verbose output");
-    println("  quark --emit-asm main.k   Emit assembly instead of LLVM IR");
-    println("");
-    println("  " + colorize("Add custom libraries:", Colors::BRIGHT_GREEN));
-    println("    quark -L libs -l sqlite main.k   # Add ./libs to search path and link sqlite");
-    println("");
-    println(colorize("Cache Options:", Colors::BOLD));
-    println("  --no-cache                Disable compilation cache");
-    println("  --clear-cache             Clear the compilation cache before compiling");
-    println("  --cache-dir <dir>         Set custom cache directory (default: .quark_cache)");
+    printlnRaw("");
+    printlnRaw(colorize("Examples:", Colors::BOLD));
+    printlnRaw("  quark main.k              Compile main.k to main");
+    printlnRaw("  quark -o program main.k   Compile to program");
+    printlnRaw("  quark -v main.k           Compile with verbose output");
+    printlnRaw("  quark --emit-asm main.k   Emit assembly instead of LLVM IR");
+    printlnRaw("");
+    printlnRaw("  " + colorize("Add custom libraries:", Colors::BRIGHT_GREEN));
+    printlnRaw("    quark -L libs -l sqlite main.k   # Add ./libs to search path and link sqlite");
+    printlnRaw("");
+    printlnRaw(colorize("Cache Options:", Colors::BOLD));
+    printlnRaw("  --no-cache                Disable compilation cache");
+    printlnRaw("  --clear-cache             Clear the compilation cache before compiling");
+    printlnRaw("  --cache-dir <dir>         Set custom cache directory (default: .quark_cache)");
 }
 
 // CLIArgs implementation
@@ -446,66 +446,66 @@ bool CLIArgs::validate(CLI& cli) const {
 
 void CLIArgs::printDetailedHelp(CLI& cli) {
     cli.printHelp();
-    cli.println("");
+    cli.printlnRaw("");
 
     // Detailed compilation process
-    cli.println(cli.colorize("Compilation Process:", Colors::BOLD));
-    cli.println("  1. " + cli.colorize("Lexical Analysis", Colors::CYAN) + " - Tokenize source code into meaningful symbols");
-    cli.println("  2. " + cli.colorize("Syntax Analysis", Colors::CYAN) + " - Parse tokens into Abstract Syntax Tree (AST)");
-    cli.println("  3. " + cli.colorize("Type Checking", Colors::CYAN) + " - Validate types and resolve symbols");
-    cli.println("  4. " + cli.colorize("Code Generation", Colors::CYAN) + " - Generate LLVM Intermediate Representation");
-    cli.println("");
+    cli.printlnRaw(cli.colorize("Compilation Process:", Colors::BOLD));
+    cli.printlnRaw("  1. " + cli.colorize("Lexical Analysis", Colors::CYAN) + " - Tokenize source code into meaningful symbols");
+    cli.printlnRaw("  2. " + cli.colorize("Syntax Analysis", Colors::CYAN) + " - Parse tokens into Abstract Syntax Tree (AST)");
+    cli.printlnRaw("  3. " + cli.colorize("Type Checking", Colors::CYAN) + " - Validate types and resolve symbols");
+    cli.printlnRaw("  4. " + cli.colorize("Code Generation", Colors::CYAN) + " - Generate LLVM Intermediate Representation");
+    cli.printlnRaw("");
 
     // Advanced usage examples
-    cli.println(cli.colorize("Advanced Examples:", Colors::BOLD));
-    cli.println("  " + cli.colorize("Basic compilation:", Colors::BRIGHT_GREEN));
-    cli.println("    quark hello.k                    # Compile hello.k to hello");
-    cli.println("");
-    cli.println("  " + cli.colorize("Custom output:", Colors::BRIGHT_GREEN));
-    cli.println("    quark -o program.ll main.k       # Specify output file");
-    cli.println("");
-    cli.println("  " + cli.colorize("Verbose compilation:", Colors::BRIGHT_GREEN));
-    cli.println("    quark -v main.k                  # Show detailed compilation steps");
-    cli.println("");
-    cli.println("  " + cli.colorize("Debug mode:", Colors::BRIGHT_GREEN));
-    cli.println("    quark --debug main.k             # Show internal compiler information");
-    cli.println("");
-    cli.println("  " + cli.colorize("Quiet mode:", Colors::BRIGHT_GREEN));
-    cli.println("    quark -q main.k                  # Suppress non-essential output");
-    cli.println("");
-    cli.println("  " + cli.colorize("Link custom libraries:", Colors::BRIGHT_GREEN));
-    cli.println("    quark --libpath libs --link-lib sqlite main.k");
-    cli.println("");
+    cli.printlnRaw(cli.colorize("Advanced Examples:", Colors::BOLD));
+    cli.printlnRaw("  " + cli.colorize("Basic compilation:", Colors::BRIGHT_GREEN));
+    cli.printlnRaw("    quark hello.k                    # Compile hello.k to hello");
+    cli.printlnRaw("");
+    cli.printlnRaw("  " + cli.colorize("Custom output:", Colors::BRIGHT_GREEN));
+    cli.printlnRaw("    quark -o program.ll main.k       # Specify output file");
+    cli.printlnRaw("");
+    cli.printlnRaw("  " + cli.colorize("Verbose compilation:", Colors::BRIGHT_GREEN));
+    cli.printlnRaw("    quark -v main.k                  # Show detailed compilation steps");
+    cli.printlnRaw("");
+    cli.printlnRaw("  " + cli.colorize("Debug mode:", Colors::BRIGHT_GREEN));
+    cli.printlnRaw("    quark --debug main.k             # Show internal compiler information");
+    cli.printlnRaw("");
+    cli.printlnRaw("  " + cli.colorize("Quiet mode:", Colors::BRIGHT_GREEN));
+    cli.printlnRaw("    quark -q main.k                  # Suppress non-essential output");
+    cli.printlnRaw("");
+    cli.printlnRaw("  " + cli.colorize("Link custom libraries:", Colors::BRIGHT_GREEN));
+    cli.printlnRaw("    quark --libpath libs --link-lib sqlite main.k");
+    cli.printlnRaw("");
 
     // Error handling information
-    cli.println(cli.colorize("Error Handling:", Colors::BOLD));
-    cli.println("  Quark provides " + cli.colorize("Rust-style error messages", Colors::BRIGHT_CYAN) + " with:");
-    cli.println("  • Source code context with line numbers");
-    cli.println("  • Precise error location indicators (^)");
-    cli.println("  • Helpful suggestions and fixes");
-    cli.println("  • Color-coded severity levels");
-    cli.println("");
+    cli.printlnRaw(cli.colorize("Error Handling:", Colors::BOLD));
+    cli.printlnRaw("  Quark provides " + cli.colorize("Rust-style error messages", Colors::BRIGHT_CYAN) + " with:");
+    cli.printlnRaw("  • Source code context with line numbers");
+    cli.printlnRaw("  • Precise error location indicators (^)");
+    cli.printlnRaw("  • Helpful suggestions and fixes");
+    cli.printlnRaw("  • Color-coded severity levels");
+    cli.printlnRaw("");
 
     // File types and extensions
-    cli.println(cli.colorize("Supported Files:", Colors::BOLD));
-    cli.println("  " + cli.colorize(".k", Colors::BRIGHT_MAGENTA) + "    Quark source files");
-    cli.println("  " + cli.colorize(".ll", Colors::BRIGHT_MAGENTA) + "   LLVM IR output files");
-    cli.println("");
+    cli.printlnRaw(cli.colorize("Supported Files:", Colors::BOLD));
+    cli.printlnRaw("  " + cli.colorize(".k", Colors::BRIGHT_MAGENTA) + "    Quark source files");
+    cli.printlnRaw("  " + cli.colorize(".ll", Colors::BRIGHT_MAGENTA) + "   LLVM IR output files");
+    cli.printlnRaw("");
 
-        cli.println(cli.colorize("Environment:", Colors::BOLD));
-    cli.println("  " + cli.colorize("NO_COLOR", Colors::CYAN) + "        Disable colored output");
-    cli.println("  " + cli.colorize("QUARK_VERBOSE", Colors::CYAN) + "    Enable verbose mode by default");
-    cli.println("");
+    cli.printlnRaw(cli.colorize("Environment:", Colors::BOLD));
+    cli.printlnRaw("  " + cli.colorize("NO_COLOR", Colors::CYAN) + "        Disable colored output");
+    cli.printlnRaw("  " + cli.colorize("QUARK_VERBOSE", Colors::CYAN) + "    Enable verbose mode by default");
+    cli.printlnRaw("");
 
     // Links and resources
-    cli.println(cli.colorize("Resources:", Colors::BOLD));
-    cli.println("  " + cli.colorize("Documentation:", Colors::BRIGHT_BLUE) + " https://github.com/richardhbtz/quark/docs");
-    cli.println("  " + cli.colorize("Source Code:", Colors::BRIGHT_BLUE) + "   https://github.com/richardhbtz/quark");
-    cli.println("  " + cli.colorize("Bug Reports:", Colors::BRIGHT_BLUE) + "   https://github.com/richardhbtz/quark/issues");
-    cli.println("");
+    cli.printlnRaw(cli.colorize("Resources:", Colors::BOLD));
+    cli.printlnRaw("  " + cli.colorize("Documentation:", Colors::BRIGHT_BLUE) + " https://github.com/richardhbtz/quark/docs");
+    cli.printlnRaw("  " + cli.colorize("Source Code:", Colors::BRIGHT_BLUE) + "   https://github.com/richardhbtz/quark");
+    cli.printlnRaw("  " + cli.colorize("Bug Reports:", Colors::BRIGHT_BLUE) + "   https://github.com/richardhbtz/quark/issues");
+    cli.printlnRaw("");
 
     // Version and build info
-    cli.println(cli.colorize("Build Information:", Colors::BOLD));
-    cli.println("  Built with LLVM and modern C++20");
-    cli.println("  Supports Windows, macOS, and Linux");
+    cli.printlnRaw(cli.colorize("Build Information:", Colors::BOLD));
+    cli.printlnRaw("  Built with LLVM and modern C++20");
+    cli.printlnRaw("  Supports Windows, macOS, and Linux");
 }
