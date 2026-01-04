@@ -39,9 +39,13 @@ void ModuleResolver::buildModuleRegistry() {
     std::error_code ec;
     
     // Scan standard library directories
+    // NOTE: `compilerPath_` is typically the directory of the compiler executable.
+    // In dev builds, the executable often lives in `build/` (macOS/Linux) or
+    // `build/Release` (Windows/MSVC). Try a few common layouts.
     std::vector<std::filesystem::path> libDirs = {
-        compilerPath_ / "lib",
-        compilerPath_.parent_path().parent_path() / "lib"  // Dev: build/Release -> repo/lib
+        compilerPath_ / "lib",                               // Installed: <compiler_dir>/lib
+        compilerPath_.parent_path() / "lib",                 // Dev: build -> repo/lib
+        compilerPath_.parent_path().parent_path() / "lib"     // Dev: build/Release -> repo/lib
     };
     
     for (const auto& libDir : libDirs) {
@@ -249,8 +253,9 @@ std::optional<std::filesystem::path> ModuleResolver::resolveStdLib(const std::st
     
     // Try multiple possible lib locations
     std::vector<std::filesystem::path> possibleLibDirs = {
-        compilerPath_ / "lib" / baseModule,                    // Installed: <compiler>/lib/<module>
-        compilerPath_.parent_path().parent_path() / "lib" / baseModule  // Dev: build/Release -> repo/lib
+        compilerPath_ / "lib" / baseModule,                               // Installed: <compiler_dir>/lib/<module>
+        compilerPath_.parent_path() / "lib" / baseModule,                 // Dev: build -> repo/lib
+        compilerPath_.parent_path().parent_path() / "lib" / baseModule     // Dev: build/Release -> repo/lib
     };
     
     std::error_code ec;
