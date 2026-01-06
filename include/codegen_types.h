@@ -10,7 +10,8 @@ enum class QuarkType {
     Double,     // 64-bit floating point  
     Char,       // 8-bit character
     String,
-    Map,        // String-keyed map (str -> str)
+    Map,        // Built-in hash map type
+    List,       // Built-in dynamic list type
     Boolean,
     Void,
     Struct,
@@ -103,6 +104,7 @@ public:
         if (typeName == "char") return QuarkType::Char;
         if (typeName == "str") return QuarkType::String;
         if (typeName == "map") return QuarkType::Map;
+        if (typeName == "list") return QuarkType::List;
         if (typeName == "bool") return QuarkType::Boolean;
         if (typeName == "void") return QuarkType::Void;
         // Handle array types: int[], str[], etc.
@@ -134,6 +136,7 @@ public:
             case QuarkType::Char: return "char";
             case QuarkType::String: return "str";
             case QuarkType::Map: return "map";
+            case QuarkType::List: return "list";
             case QuarkType::Boolean: return "bool";
             case QuarkType::Void: return "void";
             case QuarkType::Struct: return "struct";

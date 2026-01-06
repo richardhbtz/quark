@@ -614,6 +614,71 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return block;
     }
 
+    // Handle map declaration: map varName; or map varName = { ... };
+    if (cur_.kind == tok_map)
+    {
+        SourceLocation mapDeclLoc = cur_.location;
+        next(); // consume 'map'
+        
+        if (cur_.kind != tok_identifier) {
+            throw ParseError("expected variable name after 'map'", cur_.location);
+        }
+        std::string varName = cur_.text;
+        next();
+        
+        std::unique_ptr<ExprAST> initExpr;
+        if (cur_.kind == tok_equal) {
+            next(); // consume '='
+            initExpr = parseExpression();
+        } else {
+            // Empty map initialization: map {}
+            initExpr = std::make_unique<MapLiteralExpr>(
+                std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>>());
+        }
+        
+        if (cur_.kind == tok_semicolon) {
+            next();
+        }
+        
+        if (verbose_)
+            printf("[parser] parsed map declaration: %s\n", varName.c_str());
+        auto stmt = std::make_unique<VarDeclStmt>("map", varName, std::move(initExpr));
+        stmt->location = mapDeclLoc;
+        return stmt;
+    }
+
+    // Handle list declaration: list varName; or list varName = [ ... ];
+    if (cur_.kind == tok_list)
+    {
+        SourceLocation listDeclLoc = cur_.location;
+        next(); // consume 'list'
+        
+        if (cur_.kind != tok_identifier) {
+            throw ParseError("expected variable name after 'list'", cur_.location);
+        }
+        std::string varName = cur_.text;
+        next();
+        
+        std::unique_ptr<ExprAST> initExpr;
+        if (cur_.kind == tok_equal) {
+            next(); // consume '='
+            initExpr = parseExpression();
+        } else {
+            // Empty list initialization: list []
+            initExpr = std::make_unique<ListLiteralExpr>(std::vector<std::unique_ptr<ExprAST>>());
+        }
+        
+        if (cur_.kind == tok_semicolon) {
+            next();
+        }
+        
+        if (verbose_)
+            printf("[parser] parsed list declaration: %s\n", varName.c_str());
+        auto stmt = std::make_unique<VarDeclStmt>("list", varName, std::move(initExpr));
+        stmt->location = listDeclLoc;
+        return stmt;
+    }
+
             if (isTypeToken(cur_) || (cur_.kind == tok_identifier && cur_.text != "for" && peekToken().kind == tok_identifier))
     {
         SourceLocation typeDeclLoc = cur_.location; // Save location of type
@@ -1328,6 +1393,88 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         return std::make_unique<DereferenceExpr>(std::move(operand));
     }
 
+    // Map literal: map { "key": value, ... } or just { "key": value, ... }
+    if (cur_.kind == tok_map)
+    {
+        SourceLocation mapLoc = cur_.location;
+        next(); // consume 'map'
+        
+        if (cur_.kind != tok_brace_open) {
+            throw ParseError("expected '{' after 'map' keyword", cur_.location);
+        }
+        next(); // consume '{'
+        
+        std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs;
+        
+        if (cur_.kind != tok_brace_close) {
+            while (true) {
+                auto keyExpr = parseExpression();
+                if (cur_.kind != tok_colon) {
+                    throw ParseError("expected ':' after map key", cur_.location);
+                }
+                next(); // consume ':'
+                auto valueExpr = parseExpression();
+                pairs.emplace_back(std::move(keyExpr), std::move(valueExpr));
+                
+                if (cur_.kind == tok_comma) {
+                    next(); // consume ','
+                    if (cur_.kind == tok_brace_close) break; // trailing comma
+                    continue;
+                }
+                break;
+            }
+        }
+        
+        if (cur_.kind != tok_brace_close) {
+            throw ParseError("expected '}' to close map literal", cur_.location);
+        }
+        next(); // consume '}'
+        
+        if (verbose_)
+            printf("[parser] parsed map literal with %zu pairs\n", pairs.size());
+        auto expr = std::make_unique<MapLiteralExpr>(std::move(pairs));
+        expr->location = mapLoc;
+        return expr;
+    }
+
+    // List literal: list [1, 2, 3] or just [1, 2, 3]
+    if (cur_.kind == tok_list)
+    {
+        SourceLocation listLoc = cur_.location;
+        next(); // consume 'list'
+        
+        if (cur_.kind != tok_square_bracket_open) {
+            throw ParseError("expected '[' after 'list' keyword", cur_.location);
+        }
+        next(); // consume '['
+        
+        std::vector<std::unique_ptr<ExprAST>> elements;
+        
+        if (cur_.kind != tok_square_bracket_close) {
+            while (true) {
+                elements.push_back(parseExpression());
+                
+                if (cur_.kind == tok_comma) {
+                    next(); // consume ','
+                    if (cur_.kind == tok_square_bracket_close) break; // trailing comma
+                    continue;
+                }
+                break;
+            }
+        }
+        
+        if (cur_.kind != tok_square_bracket_close) {
+            throw ParseError("expected ']' to close list literal", cur_.location);
+        }
+        next(); // consume ']'
+        
+        if (verbose_)
+            printf("[parser] parsed list literal with %zu elements\n", elements.size());
+        auto expr = std::make_unique<ListLiteralExpr>(std::move(elements));
+        expr->location = listLoc;
+        return expr;
+    }
+
     if (cur_.kind == tok_number)
     {
         auto n = std::make_unique<NumberExprAST>(cur_.numberValue);
@@ -1442,9 +1589,51 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
             return std::make_unique<ArrayLiteralExpr>(std::move(elements));
         }
     }
-        if (cur_.kind == tok_brace_open)
+    // Standalone map literal: { "key": value, ... }
+    if (cur_.kind == tok_brace_open)
     {
-        throw ParseError("unexpected '{' in expression; use '[' and ']' for array literals or 'Type { ... }' for struct literals", cur_.location);
+        SourceLocation mapLoc = cur_.location;
+        next(); // consume '{'
+        
+        // Check if this is a map literal by looking for colon after first expression
+        // Peek ahead to determine if this is a map (has "key": pattern) or struct literal
+        std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs;
+        
+        if (cur_.kind != tok_brace_close) {
+            // Parse first key
+            auto keyExpr = parseExpression();
+            
+            if (cur_.kind != tok_colon) {
+                throw ParseError("expected ':' after map key, or use '[' and ']' for array literals", cur_.location);
+            }
+            next(); // consume ':'
+            auto valueExpr = parseExpression();
+            pairs.emplace_back(std::move(keyExpr), std::move(valueExpr));
+            
+            while (cur_.kind == tok_comma) {
+                next(); // consume ','
+                if (cur_.kind == tok_brace_close) break; // trailing comma
+                
+                auto key = parseExpression();
+                if (cur_.kind != tok_colon) {
+                    throw ParseError("expected ':' after map key", cur_.location);
+                }
+                next(); // consume ':'
+                auto value = parseExpression();
+                pairs.emplace_back(std::move(key), std::move(value));
+            }
+        }
+        
+        if (cur_.kind != tok_brace_close) {
+            throw ParseError("expected '}' to close map literal", cur_.location);
+        }
+        next(); // consume '}'
+        
+        if (verbose_)
+            printf("[parser] parsed standalone map literal with %zu pairs\n", pairs.size());
+        auto expr = std::make_unique<MapLiteralExpr>(std::move(pairs));
+        expr->location = mapLoc;
+        return expr;
     }
 
     if (cur_.kind == tok_identifier)

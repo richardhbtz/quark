@@ -44,7 +44,12 @@ if(APPLE)
 
     message(STATUS "Found ZSTD ${ZSTD_PACKAGE_VERSION}")
     message(STATUS "Using ZSTDConfig.cmake in: ${ZSTD_DIR}")
-
+elseif(UNIX AND NOT APPLE)
+    # Linux configuration
+    find_package(OpenSSL REQUIRED)
+    find_package(ZLIB REQUIRED)
+    find_package(Threads REQUIRED)
+    message(STATUS "Found OpenSSL ${OPENSSL_VERSION}")
 endif()
 
 find_package(ftxui CONFIG REQUIRED)
@@ -141,10 +146,16 @@ add_library(quark_io STATIC
 )
 target_include_directories(quark_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/io)
 
-# Map runtime library (string-keyed dictionary)
+# Map runtime library (string-keyed dictionary) - Legacy, kept for compatibility
 add_library(quark_map STATIC
     lib/map/quark_map.cpp
 )
+
+# Native runtime library (built-in map and list types)
+add_library(quark_runtime STATIC
+    lib/runtime/quark_runtime.cpp
+)
+target_include_directories(quark_runtime PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/runtime)
 
 # TOML runtime library (toml++ powered parser and serializer)
 add_library(quark_toml STATIC
@@ -158,11 +169,17 @@ add_library(quark_ws STATIC
 )
 
 target_include_directories(quark_ws PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/ws)
-target_include_directories(quark_ws PRIVATE /opt/homebrew/opt/ixwebsocket/include)
-target_link_libraries(quark_ws PRIVATE ixwebsocket::ixwebsocket)
 if(APPLE)
+    target_include_directories(quark_ws PRIVATE /opt/homebrew/opt/ixwebsocket/include)
+endif()
+target_link_libraries(quark_ws PRIVATE ixwebsocket::ixwebsocket)
+if(APPLE OR (UNIX AND NOT APPLE))
     # Ensure OpenSSL is linked into the websocket static lib so TLS symbols are resolved
     target_link_libraries(quark_ws PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
+if(UNIX AND NOT APPLE)
+    # Linux needs pthread and zlib for ixwebsocket
+    target_link_libraries(quark_ws PRIVATE Threads::Threads ZLIB::ZLIB)
 endif()
 # Force static linking for IXWebSocket dependencies on Windows
 if(WIN32)
@@ -200,9 +217,15 @@ if(APPLE)
         aarch64disassembler
         aarch64info
     )
-endif()
-
-if(WIN32)
+elseif(WIN32)
+    list(APPEND LLVM_COMPONENTS
+        x86codegen
+        x86asmparser
+        x86desc
+        x86disassembler
+        x86info
+    )
+elseif(UNIX)
     list(APPEND LLVM_COMPONENTS
         x86codegen
         x86asmparser
@@ -228,9 +251,14 @@ target_link_libraries(quark_compiler
     ftxui::component
 )
 
-if(APPLE)
+if(APPLE OR (UNIX AND NOT APPLE))
     # Link OpenSSL into the final binary as well to satisfy ixwebsocket TLS usage
     target_link_libraries(quark_compiler PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+endif()
+
+if(UNIX AND NOT APPLE)
+    # Linux needs additional libraries
+    target_link_libraries(quark_compiler PUBLIC Threads::Threads ZLIB::ZLIB dl)
 endif()
 
 # Force static compilation for main target
@@ -245,7 +273,7 @@ target_link_libraries(quark PRIVATE quark_compiler)
 if(WIN32)
     target_link_options(quark PRIVATE /SUBSYSTEM:CONSOLE /NODEFAULTLIB:msvcrt.lib)
 endif()
-add_dependencies(quark quark_http quark_json quark_ws quark_toml quark_map)
+add_dependencies(quark quark_http quark_json quark_ws quark_toml quark_map quark_runtime)
 
 # Copy the runtime static library next to the compiler binary for LLD to consume
 add_custom_command(TARGET quark POST_BUILD
@@ -269,6 +297,12 @@ add_custom_command(TARGET quark POST_BUILD
 add_custom_command(TARGET quark POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     $<TARGET_FILE:quark_map>
+    $<TARGET_FILE_DIR:quark>
+)
+
+add_custom_command(TARGET quark POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    $<TARGET_FILE:quark_runtime>
     $<TARGET_FILE_DIR:quark>
 )
 

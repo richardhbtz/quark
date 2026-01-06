@@ -513,6 +513,10 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         } else if (arrayType.type == QuarkType::Map) {
             // Map access always returns string
             return TypeInfo(QuarkType::String, expr->location);
+        } else if (arrayType.type == QuarkType::List) {
+            // List is untyped - elements are stored as i8*, return Int as default
+            // The caller must cast as needed
+            return TypeInfo(QuarkType::Int, expr->location);
         } else if (arrayType.type == QuarkType::String) {
                         return TypeInfo(QuarkType::Int, expr->location);
         } else {
@@ -1361,6 +1365,10 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
     
     if (auto *mapLiteral = dynamic_cast<MapLiteralExpr *>(expr)) {
         return genMapLiteral(mapLiteral);
+    }
+    
+    if (auto *listLiteral = dynamic_cast<ListLiteralExpr *>(expr)) {
+        return genListLiteral(listLiteral);
     }
     
     if (auto *arrayAccess = dynamic_cast<ArrayAccessExpr *>(expr)) {
@@ -3829,46 +3837,175 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
     }
 
     if (objType.type == QuarkType::Map) {
-        std::vector<LLVMValueRef> args;
-        args.push_back(objectValue);
+        // Ensure map runtime is declared
+        declareNativeMapRuntime();
         
         if (methodCall->methodName == "get") {
             if (methodCall->args.size() != 1)
                 throw CodeGenError("map.get expects 1 argument: key", methodCall->location);
             LLVMValueRef key = genExpr(methodCall->args[0].get());
-            args.push_back(key);
-            return builtinFunctions_->generateBuiltinCall("map_get", args);
+            
+            LLVMValueRef mapGetFn = LLVMGetNamedFunction(module_, "__quark_map_get");
+            LLVMValueRef args[] = { objectValue, key };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapGetFn), mapGetFn, args, 2, "map_get");
         }
         if (methodCall->methodName == "set") {
             if (methodCall->args.size() != 2)
                 throw CodeGenError("map.set expects 2 arguments: key, value", methodCall->location);
             LLVMValueRef key = genExpr(methodCall->args[0].get());
             LLVMValueRef value = genExpr(methodCall->args[1].get());
-            args.push_back(key);
-            args.push_back(value);
-            return builtinFunctions_->generateBuiltinCall("map_set", args);
+            
+            // Convert value to i8*
+            LLVMValueRef valueAsI8Ptr;
+            LLVMTypeRef valType = LLVMTypeOf(value);
+            LLVMTypeKind kind = LLVMGetTypeKind(valType);
+            if (kind == LLVMPointerTypeKind) {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            } else if (kind == LLVMIntegerTypeKind) {
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+            } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+                LLVMValueRef bits;
+                if (kind == LLVMFloatTypeKind) {
+                    bits = LLVMBuildBitCast(builder_, value, LLVMInt32TypeInContext(ctx_), "float_bits");
+                    bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+                } else {
+                    bits = LLVMBuildBitCast(builder_, value, i64, "double_bits");
+                }
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+            } else {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            }
+            
+            LLVMValueRef mapSetFn = LLVMGetNamedFunction(module_, "__quark_map_set");
+            LLVMValueRef args[] = { objectValue, key, valueAsI8Ptr };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapSetFn), mapSetFn, args, 3, "");
+            return nullptr;
         }
-        if (methodCall->methodName == "has") {
+        if (methodCall->methodName == "contains") {
             if (methodCall->args.size() != 1)
-                throw CodeGenError("map.has expects 1 argument: key", methodCall->location);
+                throw CodeGenError("map.contains expects 1 argument: key", methodCall->location);
             LLVMValueRef key = genExpr(methodCall->args[0].get());
-            args.push_back(key);
-            return builtinFunctions_->generateBuiltinCall("map_has", args);
+            
+            LLVMValueRef mapContainsFn = LLVMGetNamedFunction(module_, "__quark_map_contains");
+            LLVMValueRef args[] = { objectValue, key };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapContainsFn), mapContainsFn, args, 2, "map_contains");
         }
-        if (methodCall->methodName == "len") {
-            return builtinFunctions_->generateBuiltinCall("map_len", args);
+        if (methodCall->methodName == "len" || methodCall->methodName == "length") {
+            LLVMValueRef mapLenFn = LLVMGetNamedFunction(module_, "__quark_map_len");
+            LLVMValueRef args[] = { objectValue };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapLenFn), mapLenFn, args, 1, "map_len");
         }
         if (methodCall->methodName == "remove") {
             if (methodCall->args.size() != 1)
                 throw CodeGenError("map.remove expects 1 argument: key", methodCall->location);
             LLVMValueRef key = genExpr(methodCall->args[0].get());
-            args.push_back(key);
-            return builtinFunctions_->generateBuiltinCall("map_remove", args);
+            
+            LLVMValueRef mapRemoveFn = LLVMGetNamedFunction(module_, "__quark_map_remove");
+            LLVMValueRef args[] = { objectValue, key };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapRemoveFn), mapRemoveFn, args, 2, "map_remove");
         }
         if (methodCall->methodName == "free") {
-            return builtinFunctions_->generateBuiltinCall("map_free", args);
+            LLVMValueRef mapFreeFn = LLVMGetNamedFunction(module_, "__quark_map_free");
+            LLVMValueRef args[] = { objectValue };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapFreeFn), mapFreeFn, args, 1, "");
+            return nullptr;
         }
         throw CodeGenError("Unknown map method: " + methodCall->methodName, methodCall->location);
+    }
+
+    if (objType.type == QuarkType::List) {
+        // Ensure list runtime is declared
+        declareNativeListRuntime();
+        
+        if (methodCall->methodName == "push" || methodCall->methodName == "append") {
+            if (methodCall->args.size() != 1)
+                throw CodeGenError("list.push expects 1 argument: value", methodCall->location);
+            LLVMValueRef value = genExpr(methodCall->args[0].get());
+            
+            // Convert value to i8*
+            LLVMValueRef valueAsI8Ptr;
+            LLVMTypeRef valType = LLVMTypeOf(value);
+            LLVMTypeKind kind = LLVMGetTypeKind(valType);
+            if (kind == LLVMPointerTypeKind) {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            } else if (kind == LLVMIntegerTypeKind) {
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+            } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+                LLVMValueRef bits;
+                if (kind == LLVMFloatTypeKind) {
+                    bits = LLVMBuildBitCast(builder_, value, LLVMInt32TypeInContext(ctx_), "float_bits");
+                    bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+                } else {
+                    bits = LLVMBuildBitCast(builder_, value, i64, "double_bits");
+                }
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+            } else {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            }
+            
+            LLVMValueRef listPushFn = LLVMGetNamedFunction(module_, "__quark_list_push");
+            LLVMValueRef args[] = { objectValue, valueAsI8Ptr };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listPushFn), listPushFn, args, 2, "");
+            return nullptr;
+        }
+        if (methodCall->methodName == "get") {
+            if (methodCall->args.size() != 1)
+                throw CodeGenError("list.get expects 1 argument: index", methodCall->location);
+            LLVMValueRef index = genExprInt(methodCall->args[0].get());
+            
+            LLVMValueRef listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
+            LLVMValueRef args[] = { objectValue, index };
+            LLVMValueRef ptrResult = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listGetFn), listGetFn, args, 2, "list_get_ptr");
+            // Convert i8* back to int (the value was stored via IntToPtr)
+            return LLVMBuildPtrToInt(builder_, ptrResult, int32_t_, "list_get_int");
+        }
+        if (methodCall->methodName == "set") {
+            if (methodCall->args.size() != 2)
+                throw CodeGenError("list.set expects 2 arguments: index, value", methodCall->location);
+            LLVMValueRef index = genExprInt(methodCall->args[0].get());
+            LLVMValueRef value = genExpr(methodCall->args[1].get());
+            
+            // Convert value to i8*
+            LLVMValueRef valueAsI8Ptr;
+            LLVMTypeRef valType = LLVMTypeOf(value);
+            LLVMTypeKind kind = LLVMGetTypeKind(valType);
+            if (kind == LLVMPointerTypeKind) {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            } else if (kind == LLVMIntegerTypeKind) {
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+            } else {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            }
+            
+            LLVMValueRef listSetFn = LLVMGetNamedFunction(module_, "__quark_list_set");
+            LLVMValueRef args[] = { objectValue, index, valueAsI8Ptr };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listSetFn), listSetFn, args, 3, "");
+            return nullptr;
+        }
+        if (methodCall->methodName == "remove") {
+            if (methodCall->args.size() != 1)
+                throw CodeGenError("list.remove expects 1 argument: index", methodCall->location);
+            LLVMValueRef index = genExprInt(methodCall->args[0].get());
+            
+            LLVMValueRef listRemoveFn = LLVMGetNamedFunction(module_, "__quark_list_remove");
+            LLVMValueRef args[] = { objectValue, index };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listRemoveFn), listRemoveFn, args, 2, "");
+            return nullptr;
+        }
+        if (methodCall->methodName == "len" || methodCall->methodName == "length") {
+            LLVMValueRef listLenFn = LLVMGetNamedFunction(module_, "__quark_list_len");
+            LLVMValueRef args[] = { objectValue };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listLenFn), listLenFn, args, 1, "list_len");
+        }
+        if (methodCall->methodName == "free") {
+            LLVMValueRef listFreeFn = LLVMGetNamedFunction(module_, "__quark_list_free");
+            LLVMValueRef args[] = { objectValue };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listFreeFn), listFreeFn, args, 1, "");
+            return nullptr;
+        }
+        throw CodeGenError("Unknown list method: " + methodCall->methodName, methodCall->location);
     }
 
         if (objType.type == QuarkType::Struct) {
@@ -4334,49 +4471,184 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
         if (verbose_)
             printf("[codegen] genStaticCall: treating as map method call on '%s'\n", staticCall->structName.c_str());
         
+        // Ensure map runtime is declared
+        declareNativeMapRuntime();
+        
         VariableExprAST varExpr(staticCall->structName);
         LLVMValueRef objectValue = genExpr(&varExpr);
-        
-        std::vector<LLVMValueRef> args;
-        args.push_back(objectValue);
         
         if (staticCall->methodName == "get") {
             if (staticCall->args.size() != 1)
                 throw CodeGenError("map.get expects 1 argument: key", staticCall->location);
             LLVMValueRef key = genExpr(staticCall->args[0].get());
-            args.push_back(key);
-            return builtinFunctions_->generateBuiltinCall("map_get", args);
+            
+            LLVMValueRef mapGetFn = LLVMGetNamedFunction(module_, "__quark_map_get");
+            LLVMValueRef args[] = { objectValue, key };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapGetFn), mapGetFn, args, 2, "map_get");
         }
         if (staticCall->methodName == "set") {
             if (staticCall->args.size() != 2)
                 throw CodeGenError("map.set expects 2 arguments: key, value", staticCall->location);
             LLVMValueRef key = genExpr(staticCall->args[0].get());
             LLVMValueRef value = genExpr(staticCall->args[1].get());
-            args.push_back(key);
-            args.push_back(value);
-            return builtinFunctions_->generateBuiltinCall("map_set", args);
+            
+            // Convert value to i8*
+            LLVMValueRef valueAsI8Ptr;
+            LLVMTypeRef valType = LLVMTypeOf(value);
+            LLVMTypeKind kind = LLVMGetTypeKind(valType);
+            if (kind == LLVMPointerTypeKind) {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            } else if (kind == LLVMIntegerTypeKind) {
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+            } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+                LLVMValueRef bits;
+                if (kind == LLVMFloatTypeKind) {
+                    bits = LLVMBuildBitCast(builder_, value, LLVMInt32TypeInContext(ctx_), "float_bits");
+                    bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+                } else {
+                    bits = LLVMBuildBitCast(builder_, value, i64, "double_bits");
+                }
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+            } else {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            }
+            
+            LLVMValueRef mapSetFn = LLVMGetNamedFunction(module_, "__quark_map_set");
+            LLVMValueRef args[] = { objectValue, key, valueAsI8Ptr };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapSetFn), mapSetFn, args, 3, "");
+            return nullptr;
         }
-        if (staticCall->methodName == "has") {
+        if (staticCall->methodName == "contains" || staticCall->methodName == "has") {
             if (staticCall->args.size() != 1)
-                throw CodeGenError("map.has expects 1 argument: key", staticCall->location);
+                throw CodeGenError("map.contains expects 1 argument: key", staticCall->location);
             LLVMValueRef key = genExpr(staticCall->args[0].get());
-            args.push_back(key);
-            return builtinFunctions_->generateBuiltinCall("map_has", args);
+            
+            LLVMValueRef mapContainsFn = LLVMGetNamedFunction(module_, "__quark_map_contains");
+            LLVMValueRef args[] = { objectValue, key };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapContainsFn), mapContainsFn, args, 2, "map_contains");
         }
-        if (staticCall->methodName == "len") {
-            return builtinFunctions_->generateBuiltinCall("map_len", args);
+        if (staticCall->methodName == "len" || staticCall->methodName == "length") {
+            LLVMValueRef mapLenFn = LLVMGetNamedFunction(module_, "__quark_map_len");
+            LLVMValueRef args[] = { objectValue };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapLenFn), mapLenFn, args, 1, "map_len");
         }
         if (staticCall->methodName == "remove") {
             if (staticCall->args.size() != 1)
                 throw CodeGenError("map.remove expects 1 argument: key", staticCall->location);
             LLVMValueRef key = genExpr(staticCall->args[0].get());
-            args.push_back(key);
-            return builtinFunctions_->generateBuiltinCall("map_remove", args);
+            
+            LLVMValueRef mapRemoveFn = LLVMGetNamedFunction(module_, "__quark_map_remove");
+            LLVMValueRef args[] = { objectValue, key };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapRemoveFn), mapRemoveFn, args, 2, "map_remove");
         }
         if (staticCall->methodName == "free") {
-            return builtinFunctions_->generateBuiltinCall("map_free", args);
+            LLVMValueRef mapFreeFn = LLVMGetNamedFunction(module_, "__quark_map_free");
+            LLVMValueRef args[] = { objectValue };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(mapFreeFn), mapFreeFn, args, 1, "");
+            return nullptr;
         }
         throw std::runtime_error("Unknown map method: " + staticCall->methodName);
+    }
+    
+    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::List) {
+        if (verbose_)
+            printf("[codegen] genStaticCall: treating as list method call on '%s'\n", staticCall->structName.c_str());
+        
+        // Ensure list runtime is declared
+        declareNativeListRuntime();
+        
+        VariableExprAST varExpr(staticCall->structName);
+        LLVMValueRef objectValue = genExpr(&varExpr);
+        
+        if (staticCall->methodName == "push" || staticCall->methodName == "append") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("list.push expects 1 argument: value", staticCall->location);
+            LLVMValueRef value = genExpr(staticCall->args[0].get());
+            
+            // Convert value to i8*
+            LLVMValueRef valueAsI8Ptr;
+            LLVMTypeRef valType = LLVMTypeOf(value);
+            LLVMTypeKind kind = LLVMGetTypeKind(valType);
+            if (kind == LLVMPointerTypeKind) {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            } else if (kind == LLVMIntegerTypeKind) {
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+            } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+                LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+                LLVMValueRef bits;
+                if (kind == LLVMFloatTypeKind) {
+                    bits = LLVMBuildBitCast(builder_, value, LLVMInt32TypeInContext(ctx_), "float_bits");
+                    bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+                } else {
+                    bits = LLVMBuildBitCast(builder_, value, i64, "double_bits");
+                }
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+            } else {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            }
+            
+            LLVMValueRef listPushFn = LLVMGetNamedFunction(module_, "__quark_list_push");
+            LLVMValueRef args[] = { objectValue, valueAsI8Ptr };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listPushFn), listPushFn, args, 2, "");
+            return nullptr;
+        }
+        if (staticCall->methodName == "get") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("list.get expects 1 argument: index", staticCall->location);
+            LLVMValueRef index = genExprInt(staticCall->args[0].get());
+            
+            LLVMValueRef listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
+            LLVMValueRef args[] = { objectValue, index };
+            LLVMValueRef ptrResult = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listGetFn), listGetFn, args, 2, "list_get_ptr");
+            // Convert i8* back to int (the value was stored via IntToPtr)
+            return LLVMBuildPtrToInt(builder_, ptrResult, int32_t_, "list_get_int");
+        }
+        if (staticCall->methodName == "set") {
+            if (staticCall->args.size() != 2)
+                throw CodeGenError("list.set expects 2 arguments: index, value", staticCall->location);
+            LLVMValueRef index = genExprInt(staticCall->args[0].get());
+            LLVMValueRef value = genExpr(staticCall->args[1].get());
+            
+            // Convert value to i8*
+            LLVMValueRef valueAsI8Ptr;
+            LLVMTypeRef valType = LLVMTypeOf(value);
+            LLVMTypeKind kind = LLVMGetTypeKind(valType);
+            if (kind == LLVMPointerTypeKind) {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            } else if (kind == LLVMIntegerTypeKind) {
+                valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+            } else {
+                valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+            }
+            
+            LLVMValueRef listSetFn = LLVMGetNamedFunction(module_, "__quark_list_set");
+            LLVMValueRef args[] = { objectValue, index, valueAsI8Ptr };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listSetFn), listSetFn, args, 3, "");
+            return nullptr;
+        }
+        if (staticCall->methodName == "len" || staticCall->methodName == "length") {
+            LLVMValueRef listLenFn = LLVMGetNamedFunction(module_, "__quark_list_len");
+            LLVMValueRef args[] = { objectValue };
+            return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listLenFn), listLenFn, args, 1, "list_len");
+        }
+        if (staticCall->methodName == "remove") {
+            if (staticCall->args.size() != 1)
+                throw CodeGenError("list.remove expects 1 argument: index", staticCall->location);
+            LLVMValueRef index = genExprInt(staticCall->args[0].get());
+            
+            LLVMValueRef listRemoveFn = LLVMGetNamedFunction(module_, "__quark_list_remove");
+            LLVMValueRef args[] = { objectValue, index };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listRemoveFn), listRemoveFn, args, 2, "");
+            return nullptr;
+        }
+        if (staticCall->methodName == "free") {
+            LLVMValueRef listFreeFn = LLVMGetNamedFunction(module_, "__quark_list_free");
+            LLVMValueRef args[] = { objectValue };
+            LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listFreeFn), listFreeFn, args, 1, "");
+            return nullptr;
+        }
+        throw std::runtime_error("Unknown list method: " + staticCall->methodName);
     }
     
             std::string actualStructType = staticCall->structName;
@@ -4924,27 +5196,53 @@ LLVMValueRef ExpressionCodeGen::genArrayLiteral(ArrayLiteralExpr *arrayLiteral) 
 LLVMValueRef ExpressionCodeGen::genMapLiteral(MapLiteralExpr *mapLiteral) {
     if (verbose_) printf("[codegen] generating map literal with %zu pairs\n", mapLiteral->pairs.size());
 
-    // Call quark_map_new() to create the map
-    LLVMValueRef mapNewFn = LLVMGetNamedFunction(module_, "quark_map_new");
+    // Ensure map runtime is declared
+    declareNativeMapRuntime();
+
+    // Call __quark_map_new() to create the map
+    LLVMValueRef mapNewFn = LLVMGetNamedFunction(module_, "__quark_map_new");
     if (!mapNewFn) {
-        throw CodeGenError("quark_map_new function not found", mapLiteral->location);
+        throw CodeGenError("__quark_map_new function not found", mapLiteral->location);
     }
     
     LLVMTypeRef mapNewTy = LLVMGlobalGetValueType(mapNewFn);
     LLVMValueRef mapPtr = LLVMBuildCall2(builder_, mapNewTy, mapNewFn, nullptr, 0, "map_literal");
     
-    // Get quark_map_set function
-    LLVMValueRef mapSetFn = LLVMGetNamedFunction(module_, "quark_map_set");
+    // Get __quark_map_set function
+    LLVMValueRef mapSetFn = LLVMGetNamedFunction(module_, "__quark_map_set");
     if (!mapSetFn) {
-        throw CodeGenError("quark_map_set function not found", mapLiteral->location);
+        throw CodeGenError("__quark_map_set function not found", mapLiteral->location);
     }
     
-    // For each key-value pair, call quark_map_set(map, key, value)
+    // For each key-value pair, call __quark_map_set(map, key, value)
     for (const auto& pair : mapLiteral->pairs) {
         LLVMValueRef keyVal = genExpr(pair.first.get());
         LLVMValueRef valueVal = genExpr(pair.second.get());
         
-        LLVMValueRef args[] = { mapPtr, keyVal, valueVal };
+        // Convert value to i8* for storage
+        LLVMValueRef valueAsI8Ptr;
+        LLVMTypeRef valType = LLVMTypeOf(valueVal);
+        LLVMTypeKind kind = LLVMGetTypeKind(valType);
+        
+        if (kind == LLVMPointerTypeKind) {
+            valueAsI8Ptr = LLVMBuildPointerCast(builder_, valueVal, int8ptr_t_, "val_i8p");
+        } else if (kind == LLVMIntegerTypeKind) {
+            valueAsI8Ptr = LLVMBuildIntToPtr(builder_, valueVal, int8ptr_t_, "int_to_ptr");
+        } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+            LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+            LLVMValueRef bits;
+            if (kind == LLVMFloatTypeKind) {
+                bits = LLVMBuildBitCast(builder_, valueVal, LLVMInt32TypeInContext(ctx_), "float_bits");
+                bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+            } else {
+                bits = LLVMBuildBitCast(builder_, valueVal, i64, "double_bits");
+            }
+            valueAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+        } else {
+            valueAsI8Ptr = LLVMBuildPointerCast(builder_, valueVal, int8ptr_t_, "val_i8p");
+        }
+        
+        LLVMValueRef args[] = { mapPtr, keyVal, valueAsI8Ptr };
         LLVMTypeRef mapSetTy = LLVMGlobalGetValueType(mapSetFn);
         LLVMBuildCall2(builder_, mapSetTy, mapSetFn, args, 3, "");
     }
@@ -4962,13 +5260,16 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess) {
     if (arrayTypeInfo.type == QuarkType::Map) {
         if (verbose_) printf("[codegen] generating map subscript access\n");
         
+        // Ensure map runtime is declared
+        declareNativeMapRuntime();
+        
         LLVMValueRef mapPtr = genExpr(arrayAccess->array.get());
         LLVMValueRef keyVal = genExpr(arrayAccess->index.get());
         
-        // Call quark_map_get(map, key)
-        LLVMValueRef mapGetFn = LLVMGetNamedFunction(module_, "quark_map_get");
+        // Call __quark_map_get(map, key)
+        LLVMValueRef mapGetFn = LLVMGetNamedFunction(module_, "__quark_map_get");
         if (!mapGetFn) {
-            throw CodeGenError("quark_map_get function not found", arrayAccess->location);
+            throw CodeGenError("__quark_map_get function not found", arrayAccess->location);
         }
         
         LLVMValueRef args[] = { mapPtr, keyVal };
@@ -4976,6 +5277,31 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess) {
         LLVMValueRef result = LLVMBuildCall2(builder_, mapGetTy, mapGetFn, args, 2, "map_get_result");
         
         if (verbose_) printf("[codegen] generated map subscript access\n");
+        return result;
+    }
+    
+    // Handle list subscript access list[index]
+    if (arrayTypeInfo.type == QuarkType::List) {
+        if (verbose_) printf("[codegen] generating list subscript access\n");
+        
+        LLVMValueRef listPtr = genExpr(arrayAccess->array.get());
+        LLVMValueRef indexVal = genExprInt(arrayAccess->index.get());
+        
+        // Call __quark_list_get(list, index)
+        LLVMValueRef listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
+        if (!listGetFn) {
+            declareNativeListRuntime();
+            listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
+        }
+        
+        LLVMValueRef args[] = { listPtr, indexVal };
+        LLVMTypeRef listGetTy = LLVMGlobalGetValueType(listGetFn);
+        LLVMValueRef ptrResult = LLVMBuildCall2(builder_, listGetTy, listGetFn, args, 2, "list_get_ptr");
+        
+        // Convert i8* back to int (the value was stored via IntToPtr)
+        LLVMValueRef result = LLVMBuildPtrToInt(builder_, ptrResult, int32_t_, "list_get_int");
+        
+        if (verbose_) printf("[codegen] generated list subscript access\n");
         return result;
     }
     
@@ -5001,4 +5327,255 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess) {
     
     if (verbose_) printf("[codegen] generated array access\n");
     return result;
+}
+
+// =====================================================
+// Native Map Runtime Implementation
+// =====================================================
+// Map structure layout (hash table):
+// struct QuarkMap {
+//     int32 size;        // Number of entries
+//     int32 capacity;    // Bucket capacity
+//     i8** keys;         // Array of key strings
+//     i8** values;       // Array of value pointers (as i8*)
+//     int32* hashes;     // Pre-computed hash values for faster lookup
+// }
+
+void ExpressionCodeGen::declareNativeMapRuntime() {
+    if (verbose_) printf("[codegen] declaring native map runtime\n");
+    
+    LLVMTypeRef i8p = int8ptr_t_;
+    LLVMTypeRef i32 = int32_t_;
+    LLVMTypeRef voidTy = LLVMVoidTypeInContext(ctx_);
+    LLVMTypeRef i1 = bool_t_;
+    
+    // __quark_map_new() -> i8*
+    {
+        LLVMTypeRef fnTy = LLVMFunctionType(i8p, nullptr, 0, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_new");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_new", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_map_free(map: i8*) -> void
+    {
+        LLVMTypeRef params[] = { i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 1, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_free");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_free", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_map_set(map: i8*, key: i8*, value: i8*) -> void
+    {
+        LLVMTypeRef params[] = { i8p, i8p, i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 3, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_set");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_set", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_map_get(map: i8*, key: i8*) -> i8*
+    {
+        LLVMTypeRef params[] = { i8p, i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(i8p, params, 2, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_get");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_get", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_map_contains(map: i8*, key: i8*) -> i1
+    {
+        LLVMTypeRef params[] = { i8p, i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(i1, params, 2, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_contains");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_contains", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_map_remove(map: i8*, key: i8*) -> i1
+    {
+        LLVMTypeRef params[] = { i8p, i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(i1, params, 2, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_remove");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_remove", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_map_len(map: i8*) -> i32
+    {
+        LLVMTypeRef params[] = { i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(i32, params, 1, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_len");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_map_len", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+}
+
+// =====================================================
+// Native List Runtime Implementation
+// =====================================================
+// List structure layout (dynamic array):
+// struct QuarkList {
+//     int32 size;        // Number of elements
+//     int32 capacity;    // Allocated capacity
+//     i8** data;         // Array of element pointers (as i8*)
+// }
+
+void ExpressionCodeGen::declareNativeListRuntime() {
+    if (verbose_) printf("[codegen] declaring native list runtime\n");
+    
+    LLVMTypeRef i8p = int8ptr_t_;
+    LLVMTypeRef i32 = int32_t_;
+    LLVMTypeRef voidTy = LLVMVoidTypeInContext(ctx_);
+    
+    // __quark_list_new() -> i8*
+    {
+        LLVMTypeRef fnTy = LLVMFunctionType(i8p, nullptr, 0, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_new");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_new", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_list_free(list: i8*) -> void
+    {
+        LLVMTypeRef params[] = { i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 1, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_free");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_free", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_list_push(list: i8*, value: i8*) -> void
+    {
+        LLVMTypeRef params[] = { i8p, i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 2, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_push");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_push", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_list_get(list: i8*, index: i32) -> i8*
+    {
+        LLVMTypeRef params[] = { i8p, i32 };
+        LLVMTypeRef fnTy = LLVMFunctionType(i8p, params, 2, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_get");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_get", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_list_set(list: i8*, index: i32, value: i8*) -> void
+    {
+        LLVMTypeRef params[] = { i8p, i32, i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 3, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_set");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_set", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_list_remove(list: i8*, index: i32) -> void
+    {
+        LLVMTypeRef params[] = { i8p, i32 };
+        LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 2, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_remove");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_remove", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+    
+    // __quark_list_len(list: i8*) -> i32
+    {
+        LLVMTypeRef params[] = { i8p };
+        LLVMTypeRef fnTy = LLVMFunctionType(i32, params, 1, 0);
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_len");
+        if (!fn) {
+            fn = LLVMAddFunction(module_, "__quark_list_len", fnTy);
+            LLVMSetLinkage(fn, LLVMExternalLinkage);
+        }
+    }
+}
+
+LLVMValueRef ExpressionCodeGen::genListLiteral(ListLiteralExpr *listLiteral) {
+    if (verbose_) printf("[codegen] generating list literal with %zu elements\n", listLiteral->elements.size());
+    
+    // Ensure list runtime is declared
+    declareNativeListRuntime();
+    
+    // Call __quark_list_new() to create the list
+    LLVMValueRef listNewFn = LLVMGetNamedFunction(module_, "__quark_list_new");
+    if (!listNewFn) {
+        throw CodeGenError("__quark_list_new function not found", listLiteral->location);
+    }
+    
+    LLVMTypeRef listNewTy = LLVMGlobalGetValueType(listNewFn);
+    LLVMValueRef listPtr = LLVMBuildCall2(builder_, listNewTy, listNewFn, nullptr, 0, "list_literal");
+    
+    // Get __quark_list_push function
+    LLVMValueRef listPushFn = LLVMGetNamedFunction(module_, "__quark_list_push");
+    if (!listPushFn) {
+        throw CodeGenError("__quark_list_push function not found", listLiteral->location);
+    }
+    
+    // For each element, call __quark_list_push(list, value)
+    for (const auto& elem : listLiteral->elements) {
+        LLVMValueRef elemVal = genExpr(elem.get());
+        
+        // Convert element to i8* (store as pointer)
+        LLVMValueRef elemAsI8Ptr;
+        LLVMTypeRef elemType = LLVMTypeOf(elemVal);
+        LLVMTypeKind kind = LLVMGetTypeKind(elemType);
+        
+        if (kind == LLVMPointerTypeKind) {
+            elemAsI8Ptr = LLVMBuildPointerCast(builder_, elemVal, int8ptr_t_, "elem_i8p");
+        } else if (kind == LLVMIntegerTypeKind) {
+            // Store integer as pointer-sized value
+            elemAsI8Ptr = LLVMBuildIntToPtr(builder_, elemVal, int8ptr_t_, "int_to_ptr");
+        } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+            // Store float/double bits as pointer value
+            LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+            LLVMValueRef bits;
+            if (kind == LLVMFloatTypeKind) {
+                bits = LLVMBuildBitCast(builder_, elemVal, LLVMInt32TypeInContext(ctx_), "float_bits");
+                bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+            } else {
+                bits = LLVMBuildBitCast(builder_, elemVal, i64, "double_bits");
+            }
+            elemAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+        } else {
+            // For other types, try to cast
+            elemAsI8Ptr = LLVMBuildPointerCast(builder_, elemVal, int8ptr_t_, "elem_i8p");
+        }
+        
+        LLVMValueRef args[] = { listPtr, elemAsI8Ptr };
+        LLVMTypeRef listPushTy = LLVMGlobalGetValueType(listPushFn);
+        LLVMBuildCall2(builder_, listPushTy, listPushFn, args, 2, "");
+    }
+    
+    if (verbose_) printf("[codegen] generated list literal\n");
+    return listPtr;
 }

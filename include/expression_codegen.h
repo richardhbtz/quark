@@ -84,6 +84,13 @@ public:
     // Map expression generation
     LLVMValueRef genMapLiteral(MapLiteralExpr *mapLiteral);
     
+    // List expression generation
+    LLVMValueRef genListLiteral(ListLiteralExpr *listLiteral);
+    
+    // Native map/list runtime helpers
+    void declareNativeMapRuntime();
+    void declareNativeListRuntime();
+    
     // Helper methods for type mapping (made public for use in statement codegen)
     LLVMTypeRef quarkTypeToLLVMType(QuarkType type);
     LLVMTypeRef mapPointerType(const std::string& typeName);

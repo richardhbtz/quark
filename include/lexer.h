@@ -85,7 +85,9 @@ enum TokenKind
     tok_bitwise_xor_eq, // ^=
     tok_bitwise_and_eq, // &=
     tok_shift_left_eq,  // <<=
-    tok_shift_right_eq  // >>=
+    tok_shift_right_eq, // >>=
+    tok_map,            // map keyword
+    tok_list            // list keyword
 };
 
 struct SourceLocation

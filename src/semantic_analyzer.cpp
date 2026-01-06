@@ -102,13 +102,6 @@ void SemanticAnalyzer::registerBuiltinFunctions()
     addBuiltin("format", "str", {}, true);
     addBuiltin("to_string", "str", {}, true);
     addBuiltin("to_int", "int", {}, true);
-    addBuiltin("map_new", "map", {}, false);
-    addBuiltin("map_free", "void", {{"m", "map"}}, false);
-    addBuiltin("map_set", "void", {{"m", "map"}, {"key", "str"}, {"value", "str"}}, false);
-    addBuiltin("map_get", "str", {{"m", "map"}, {"key", "str"}}, false);
-    addBuiltin("map_has", "bool", {{"m", "map"}, {"key", "str"}}, false);
-    addBuiltin("map_len", "int", {{"m", "map"}}, false);
-    addBuiltin("map_remove", "bool", {{"m", "map"}, {"key", "str"}}, false);
     addBuiltin("str_len", "int", {{"s", "str"}}, false);
     addBuiltin("str_slice", "str", {{"s", "str"}, {"start", "int"}, {"end", "int"}}, false);
     addBuiltin("str_concat", "str", {{"a", "str"}, {"b", "str"}}, false);
@@ -726,19 +719,34 @@ void SemanticAnalyzer::analyzeArrayAssign(ArrayAssignStmt *stmt)
 {
     TypeInfo arrayType = analyzeExpr(stmt->array.get());
 
-    if (arrayType.type != QuarkType::Array && arrayType.type != QuarkType::Pointer)
+    if (arrayType.type != QuarkType::Array && arrayType.type != QuarkType::Pointer &&
+        arrayType.type != QuarkType::Map && arrayType.type != QuarkType::List)
     {
-        error("subscript operator requires array or pointer type", stmt->location, "E116");
+        error("subscript operator requires array, pointer, map, or list type", stmt->location, "E116");
         return;
     }
 
     TypeInfo indexType = analyzeExpr(stmt->index.get());
-    if (indexType.type != QuarkType::Int)
-    {
-        error("array index must be an integer", stmt->location, "E117");
+    
+    // For maps, index must be string; for arrays/pointers/lists, index must be int
+    if (arrayType.type == QuarkType::Map) {
+        if (indexType.type != QuarkType::String)
+        {
+            error("map index must be a string", stmt->location, "E117");
+        }
+    } else {
+        if (indexType.type != QuarkType::Int)
+        {
+            error("array index must be an integer", stmt->location, "E117");
+        }
     }
 
     TypeInfo valueType = analyzeExpr(stmt->value.get());
+
+    // For maps and lists, value can be any type
+    if (arrayType.type == QuarkType::Map || arrayType.type == QuarkType::List) {
+        return; // Accept any value type
+    }
 
     TypeInfo elementType;
     elementType.type = arrayType.elementType;
@@ -1032,6 +1040,11 @@ TypeInfo SemanticAnalyzer::analyzeExpr(ExprAST *expr)
         return analyzeMapLiteral(mapLit);
     }
 
+    if (auto *listLit = dynamic_cast<ListLiteralExpr *>(expr))
+    {
+        return analyzeListLiteral(listLit);
+    }
+
     if (auto *cast = dynamic_cast<CastExpr *>(expr))
     {
         return analyzeCast(cast);
@@ -1218,7 +1231,7 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
     else if (objType.type == QuarkType::Map)
     {
         if (expr->methodName == "get" || expr->methodName == "set" ||
-            expr->methodName == "has" || expr->methodName == "len" ||
+            expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "len" ||
             expr->methodName == "remove" || expr->methodName == "free")
         {
             for (auto &arg : expr->args)
@@ -1229,7 +1242,7 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
             {
                 return TypeInfo(QuarkType::String, expr->location);
             }
-            else if (expr->methodName == "has" || expr->methodName == "remove")
+            else if (expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "remove")
             {
                 return TypeInfo(QuarkType::Boolean, expr->location);
             }
@@ -1239,7 +1252,32 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
             }
             return TypeInfo(QuarkType::Void, expr->location);
         }
-        error("maps only support 'get', 'set', 'has', 'len', 'remove', 'free' methods", expr->location, "E129");
+        error("maps only support 'get', 'set', 'has', 'contains', 'len', 'remove', 'free' methods", expr->location, "E129");
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
+    else if (objType.type == QuarkType::List)
+    {
+        if (expr->methodName == "push" || expr->methodName == "append" ||
+            expr->methodName == "get" || expr->methodName == "set" ||
+            expr->methodName == "len" || expr->methodName == "length" ||
+            expr->methodName == "remove" || expr->methodName == "free")
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            if (expr->methodName == "get")
+            {
+                // List get returns unknown type (could be anything)
+                return TypeInfo(QuarkType::String, expr->location);
+            }
+            else if (expr->methodName == "len" || expr->methodName == "length")
+            {
+                return TypeInfo(QuarkType::Int, expr->location);
+            }
+            return TypeInfo(QuarkType::Void, expr->location);
+        }
+        error("lists only support 'push', 'append', 'get', 'set', 'len', 'remove', 'free' methods", expr->location, "E129");
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
 
@@ -1334,14 +1372,14 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
         
         if (objType.type == QuarkType::Map) {
             if (expr->methodName == "get" || expr->methodName == "set" ||
-                expr->methodName == "has" || expr->methodName == "len" ||
+                expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "len" ||
                 expr->methodName == "remove" || expr->methodName == "free") {
                 for (auto &arg : expr->args) {
                     analyzeExpr(arg.get());
                 }
                 if (expr->methodName == "get") {
                     return TypeInfo(QuarkType::String, expr->location);
-                } else if (expr->methodName == "has" || expr->methodName == "remove") {
+                } else if (expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "remove") {
                     return TypeInfo(QuarkType::Boolean, expr->location);
                 } else if (expr->methodName == "len") {
                     return TypeInfo(QuarkType::Int, expr->location);
@@ -1349,6 +1387,25 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
                 return TypeInfo(QuarkType::Void, expr->location);
             }
             error("maps do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+            return TypeInfo(QuarkType::Unknown, expr->location);
+        }
+        
+        if (objType.type == QuarkType::List) {
+            if (expr->methodName == "push" || expr->methodName == "append" ||
+                expr->methodName == "get" || expr->methodName == "set" ||
+                expr->methodName == "len" || expr->methodName == "length" ||
+                expr->methodName == "remove" || expr->methodName == "free") {
+                for (auto &arg : expr->args) {
+                    analyzeExpr(arg.get());
+                }
+                if (expr->methodName == "get") {
+                    return TypeInfo(QuarkType::String, expr->location);
+                } else if (expr->methodName == "len" || expr->methodName == "length") {
+                    return TypeInfo(QuarkType::Int, expr->location);
+                }
+                return TypeInfo(QuarkType::Void, expr->location);
+            }
+            error("lists do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
         
@@ -1439,13 +1496,14 @@ TypeInfo SemanticAnalyzer::analyzeArrayAccess(ArrayAccessExpr *expr)
     TypeInfo arrayType = analyzeExpr(expr->array.get());
 
     if (arrayType.type != QuarkType::Array && arrayType.type != QuarkType::Pointer &&
-        arrayType.type != QuarkType::String && arrayType.type != QuarkType::Map)
+        arrayType.type != QuarkType::String && arrayType.type != QuarkType::Map &&
+        arrayType.type != QuarkType::List)
     {
-        error("subscript operator requires array, pointer, string, or map type", expr->location, "E116");
+        error("subscript operator requires array, pointer, string, map, or list type", expr->location, "E116");
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
 
-    // For maps, index must be string; for arrays/pointers, index must be int
+    // For maps, index must be string; for arrays/pointers/lists, index must be int
     TypeInfo indexType = analyzeExpr(expr->index.get());
     if (arrayType.type == QuarkType::Map)
     {
@@ -1469,6 +1527,12 @@ TypeInfo SemanticAnalyzer::analyzeArrayAccess(ArrayAccessExpr *expr)
 
     if (arrayType.type == QuarkType::Map)
     {
+        return TypeInfo(QuarkType::String, expr->location);
+    }
+
+    if (arrayType.type == QuarkType::List)
+    {
+        // List elements are dynamically typed - return string as a reasonable default
         return TypeInfo(QuarkType::String, expr->location);
     }
 
@@ -1668,7 +1732,7 @@ TypeInfo SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralExpr *expr)
 
 TypeInfo SemanticAnalyzer::analyzeMapLiteral(MapLiteralExpr *expr)
 {
-    // For each key-value pair, verify they are strings
+    // Maps can now have any value type - analyze all key-value pairs
     for (const auto &pair : expr->pairs)
     {
         TypeInfo keyType = analyzeExpr(pair.first.get());
@@ -1677,14 +1741,23 @@ TypeInfo SemanticAnalyzer::analyzeMapLiteral(MapLiteralExpr *expr)
             error("map keys must be strings", pair.first->location, "E141");
         }
 
-        TypeInfo valueType = analyzeExpr(pair.second.get());
-        if (valueType.type != QuarkType::String)
-        {
-            error("map values must be strings", pair.second->location, "E142");
-        }
+        // Allow any value type in maps
+        analyzeExpr(pair.second.get());
     }
 
     return TypeInfo(QuarkType::Map, expr->location);
+}
+
+TypeInfo SemanticAnalyzer::analyzeListLiteral(ListLiteralExpr *expr)
+{
+    // List can contain elements of any type (dynamically typed)
+    // Just analyze all elements to check for errors
+    for (const auto &elem : expr->elements)
+    {
+        analyzeExpr(elem.get());
+    }
+
+    return TypeInfo(QuarkType::List, expr->location);
 }
 
 TypeInfo SemanticAnalyzer::analyzeCast(CastExpr *expr)
@@ -1783,6 +1856,11 @@ bool SemanticAnalyzer::canImplicitlyConvert(const TypeInfo &from, const TypeInfo
         to.elementType == QuarkType::Void) {
         return true;
     }
+    
+    // Allow array literals to be assigned to list type
+    if (from.type == QuarkType::Array && to.type == QuarkType::List) {
+        return true;
+    }
 
     return false;
 }
@@ -1804,6 +1882,8 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
         return TypeInfo(QuarkType::String);
     if (typeName == "map")
         return TypeInfo(QuarkType::Map);
+    if (typeName == "list")
+        return TypeInfo(QuarkType::List);
     if (typeName == "bool")
         return TypeInfo(QuarkType::Boolean);
     if (typeName == "void")

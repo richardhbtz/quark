@@ -183,6 +183,8 @@ Token Lexer::next()
         else if (s == "continue") tok.kind = tok_continue;
         else if (s == "null") tok.kind = tok_null;
         else if (s == "void") tok.kind = tok_void;
+        else if (s == "map") tok.kind = tok_map;
+        else if (s == "list") tok.kind = tok_list;
         else {
             tok.kind = tok_identifier;
             if (verbose_)

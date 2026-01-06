@@ -620,7 +620,10 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             // Allow null to be assigned to void* (Pointer)
             bool nullToVoidPtr = (initType.type == QuarkType::Null && 
                                   declaredType == QuarkType::Pointer);
-            if (!bothIntegers && !bothNumeric && !fnPtrToVoidPtr && !nullToVoidPtr) {
+            // Allow array literals to initialize list variables
+            bool arrayToList = (initType.type == QuarkType::Array && 
+                                declaredType == QuarkType::List);
+            if (!bothIntegers && !bothNumeric && !fnPtrToVoidPtr && !nullToVoidPtr && !arrayToList) {
                 auto typeToStr = [](QuarkType t) {
                     if (IntegerTypeUtils::isIntegerType(t)) return std::string("integer");
                     if (IntegerTypeUtils::isFloatingType(t)) {
@@ -693,6 +696,22 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt* vdecl)
             actualType = "map";
             varType = int8ptr_t_;
             val = expressionCodeGen_->genExpr(vdecl->init.get());
+            break;
+        case QuarkType::List:
+            actualType = "list";
+            varType = int8ptr_t_;
+            // Check if init is an array literal and convert it to list
+            if (auto* arrayLit = dynamic_cast<ArrayLiteralExpr*>(vdecl->init.get())) {
+                // Convert to ListLiteralExpr
+                ListLiteralExpr listLit;
+                listLit.location = arrayLit->location;
+                for (auto& elem : arrayLit->elements) {
+                    listLit.elements.push_back(std::move(elem));
+                }
+                val = expressionCodeGen_->genListLiteral(&listLit);
+            } else {
+                val = expressionCodeGen_->genExpr(vdecl->init.get());
+            }
             break;
         case QuarkType::Float:
             actualType = "float";
@@ -2660,14 +2679,61 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt* arrayAssign)
     if (verbose_)
         printf("[codegen] generating array assignment\n");
     
-        LLVMValueRef arrayPtr = expressionCodeGen_->genExpr(arrayAssign->array.get());
+    TypeInfo arrayTypeInfo = expressionCodeGen_->inferType(arrayAssign->array.get());
+    
+    // Handle list subscript assignment: list[index] = value
+    if (arrayTypeInfo.type == QuarkType::List) {
+        if (verbose_)
+            printf("[codegen] generating list subscript assignment\n");
+        
+        LLVMValueRef listPtr = expressionCodeGen_->genExpr(arrayAssign->array.get());
+        LLVMValueRef indexValue = expressionCodeGen_->genExprInt(arrayAssign->index.get());
+        LLVMValueRef value = expressionCodeGen_->genExpr(arrayAssign->value.get());
+        
+        // Convert value to i8*
+        LLVMValueRef valueAsI8Ptr;
+        LLVMTypeRef valType = LLVMTypeOf(value);
+        LLVMTypeKind kind = LLVMGetTypeKind(valType);
+        if (kind == LLVMPointerTypeKind) {
+            valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+        } else if (kind == LLVMIntegerTypeKind) {
+            valueAsI8Ptr = LLVMBuildIntToPtr(builder_, value, int8ptr_t_, "int_to_ptr");
+        } else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind) {
+            LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
+            LLVMValueRef bits;
+            if (kind == LLVMFloatTypeKind) {
+                bits = LLVMBuildBitCast(builder_, value, LLVMInt32TypeInContext(ctx_), "float_bits");
+                bits = LLVMBuildZExt(builder_, bits, i64, "float_bits_ext");
+            } else {
+                bits = LLVMBuildBitCast(builder_, value, i64, "double_bits");
+            }
+            valueAsI8Ptr = LLVMBuildIntToPtr(builder_, bits, int8ptr_t_, "bits_to_ptr");
+        } else {
+            valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
+        }
+        
+        // Get __quark_list_set function
+        LLVMValueRef listSetFn = LLVMGetNamedFunction(module_, "__quark_list_set");
+        if (!listSetFn) {
+            expressionCodeGen_->declareNativeListRuntime();
+            listSetFn = LLVMGetNamedFunction(module_, "__quark_list_set");
+        }
+        
+        LLVMValueRef args[] = { listPtr, indexValue, valueAsI8Ptr };
+        LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listSetFn), listSetFn, args, 3, "");
+        
+        if (verbose_)
+            printf("[codegen] completed list subscript assignment\n");
+        return;
+    }
+    
+    LLVMValueRef arrayPtr = expressionCodeGen_->genExpr(arrayAssign->array.get());
     
         LLVMValueRef indexValue = expressionCodeGen_->genExprInt(arrayAssign->index.get());
     
     // Generate the value to assign
     LLVMValueRef value = expressionCodeGen_->genExpr(arrayAssign->value.get());
     
-        TypeInfo arrayTypeInfo = expressionCodeGen_->inferType(arrayAssign->array.get());
     LLVMTypeRef elementType = int32_t_; // default
     
     if (arrayTypeInfo.type == QuarkType::Array) {

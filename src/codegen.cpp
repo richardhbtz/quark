@@ -748,6 +748,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                     argstrs.emplace_back("quark_ws.lib");
                     argstrs.emplace_back("quark_io.lib");
                     argstrs.emplace_back("quark_map.lib");
+                    argstrs.emplace_back("quark_runtime.lib");
                                     }
                 else
                 {
@@ -857,6 +858,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 argstrs.emplace_back("build/libquark_ws.a");
                 argstrs.emplace_back("build/libquark_io.a");
                 argstrs.emplace_back("build/libquark_map.a");
+                argstrs.emplace_back("build/libquark_runtime.a");
                 argstrs.emplace_back("-lixwebsocket");
                 argstrs.emplace_back("-lcurl");
                 argstrs.emplace_back("-lz");
@@ -948,24 +950,44 @@ bool CodeGen::emitExecutable(const std::string &outPath)
             {
                 if (verbose_)
                     printf("[codegen] Wrote temp obj: %s\n", tmpObjPath.c_str());
-                // Prepare lld ELF args
                 std::vector<std::string> argstrs;
-                argstrs.reserve(16);
+                argstrs.reserve(40);
                 argstrs.emplace_back("ld.lld");
                 if (freestanding_)
                 {
-                                                            argstrs.emplace_back("-nostdlib");
+                    argstrs.emplace_back("-nostdlib");
                     argstrs.emplace_back("-e");
                     argstrs.emplace_back("main");
                 }
+                else
+                {
+                    argstrs.emplace_back("-dynamic-linker");
+                    argstrs.emplace_back("/lib64/ld-linux-x86-64.so.2");
+                    argstrs.emplace_back("/usr/lib/x86_64-linux-gnu/crt1.o");
+                    argstrs.emplace_back("/usr/lib/x86_64-linux-gnu/crti.o");
+                }
+                argstrs.emplace_back("-L");
+                argstrs.emplace_back("/usr/lib/x86_64-linux-gnu");
+                argstrs.emplace_back("-L");
+                argstrs.emplace_back("/lib/x86_64-linux-gnu");
+                argstrs.emplace_back("-L");
+                argstrs.emplace_back("/usr/lib");
+                argstrs.emplace_back("-L");
+                argstrs.emplace_back("build");
                 argstrs.emplace_back("-o");
                 argstrs.emplace_back(outPath);
                 argstrs.emplace_back(tmpObjPath);
                 argstrs.emplace_back("build/libquark_io.a");
                 argstrs.emplace_back("build/libquark_toml.a");
                 argstrs.emplace_back("build/libquark_map.a");
+                argstrs.emplace_back("build/libquark_runtime.a");
                 argstrs.emplace_back("-lc");
                 argstrs.emplace_back("-lm");
+                argstrs.emplace_back("-lstdc++");
+                if (!freestanding_)
+                {
+                    argstrs.emplace_back("/usr/lib/x86_64-linux-gnu/crtn.o");
+                }
 
                 for (const auto &path : additionalLibraryPaths_)
                 {

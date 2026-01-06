@@ -314,11 +314,20 @@ struct NullExprAST : ExprAST {
 // Array literal expression: {1, 2, 3, 4}
 struct ArrayLiteralExpr : ExprAST {
     std::vector<std::unique_ptr<ExprAST>> elements;
+    ArrayLiteralExpr() = default;
     explicit ArrayLiteralExpr(std::vector<std::unique_ptr<ExprAST>> elems) 
         : elements(std::move(elems)) {}
 };
 
-// Map literal expression: ["key1": "value1", "key2": "value2"]
+// List literal expression: [1, 2, 3] (dynamic list type)
+struct ListLiteralExpr : ExprAST {
+    std::vector<std::unique_ptr<ExprAST>> elements;
+    ListLiteralExpr() = default;
+    explicit ListLiteralExpr(std::vector<std::unique_ptr<ExprAST>> elems) 
+        : elements(std::move(elems)) {}
+};
+
+// Map literal expression: { "key1": value1, "key2": value2 } (first-class map type)
 struct MapLiteralExpr : ExprAST {
     std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs; // key, value
     explicit MapLiteralExpr(std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> p)
@@ -434,6 +443,8 @@ private:
             case tok_double: return "double";
             case tok_char: return "char";
             case tok_void: return "void";
+            case tok_map: return "map";
+            case tok_list: return "list";
             case tok_identifier: return token.text;
             default: return token.text;
         }
@@ -526,6 +537,8 @@ private:
                token.kind == tok_double ||
                token.kind == tok_char ||
                token.kind == tok_fn ||
-               token.kind == tok_void;
+               token.kind == tok_void ||
+               token.kind == tok_map ||
+               token.kind == tok_list;
     }
 };
