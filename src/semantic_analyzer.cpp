@@ -173,7 +173,7 @@ bool SemanticAnalyzer::analyze(ProgramAST *program)
             {
                 sourceCode = file->content;
             }
-            
+
             if (err.isWarning)
             {
                 errorReporter_.reportWarning(err.message, err.location, sourceCode, err.errorCode, err.spanLength);
@@ -196,7 +196,7 @@ bool SemanticAnalyzer::analyze(ProgramAST *program)
         {
             sourceCode = file->content;
         }
-        
+
         if (err.isWarning)
         {
             errorReporter_.reportWarning(err.message, err.location, sourceCode, err.errorCode, err.spanLength);
@@ -372,8 +372,8 @@ void SemanticAnalyzer::collectExternVariable(ExternVarAST *var)
     sym.typeName = var->typeName;
     sym.declLocation = var->location;
     sym.isExtern = true;
-    sym.isInitialized = true;  // Extern variables are initialized externally
-    sym.type = resolveType(var->typeName);  // Set full TypeInfo (including .type for pointer checks)
+    sym.isInitialized = true;              // Extern variables are initialized externally
+    sym.type = resolveType(var->typeName); // Set full TypeInfo (including .type for pointer checks)
     sym.resolvedType = sym.type.type;
 
     symbolTable_.globalScope()->declare(var->name, sym);
@@ -419,7 +419,8 @@ void SemanticAnalyzer::analyzeStmt(StmtAST *stmt)
     {
         // Module declaration - store the module name for this file
         // This is informational for now - used by the module system
-        if (verbose_) {
+        if (verbose_)
+        {
             printf("[semantic] Module declaration: %s\n", modDecl->moduleName.c_str());
         }
     }
@@ -603,9 +604,10 @@ void SemanticAnalyzer::analyzeVarDecl(VarDeclStmt *stmt)
     }
 
     TypeInfo targetType = resolveType(declaredType);
-    
+
     // For function pointer types inferred from initializer, preserve the funcPtrInfo
-    if (initType.type == QuarkType::FunctionPointer && initType.funcPtrInfo) {
+    if (initType.type == QuarkType::FunctionPointer && initType.funcPtrInfo)
+    {
         targetType.funcPtrInfo = initType.funcPtrInfo;
     }
 
@@ -727,14 +729,17 @@ void SemanticAnalyzer::analyzeArrayAssign(ArrayAssignStmt *stmt)
     }
 
     TypeInfo indexType = analyzeExpr(stmt->index.get());
-    
+
     // For maps, index must be string; for arrays/pointers/lists, index must be int
-    if (arrayType.type == QuarkType::Map) {
+    if (arrayType.type == QuarkType::Map)
+    {
         if (indexType.type != QuarkType::String)
         {
             error("map index must be a string", stmt->location, "E117");
         }
-    } else {
+    }
+    else
+    {
         if (indexType.type != QuarkType::Int)
         {
             error("array index must be an integer", stmt->location, "E117");
@@ -744,7 +749,8 @@ void SemanticAnalyzer::analyzeArrayAssign(ArrayAssignStmt *stmt)
     TypeInfo valueType = analyzeExpr(stmt->value.get());
 
     // For maps and lists, value can be any type
-    if (arrayType.type == QuarkType::Map || arrayType.type == QuarkType::List) {
+    if (arrayType.type == QuarkType::Map || arrayType.type == QuarkType::List)
+    {
         return; // Accept any value type
     }
 
@@ -1080,7 +1086,7 @@ TypeInfo SemanticAnalyzer::analyzeCall(CallExprAST *expr)
     }
 
     // Check if this is a function pointer variable (either FunctionPointer type or void*)
-    if (func->kind == Symbol::Kind::Variable && 
+    if (func->kind == Symbol::Kind::Variable &&
         (func->type.type == QuarkType::FunctionPointer || func->type.type == QuarkType::Pointer))
     {
         // It's a function pointer call - analyze arguments
@@ -1089,7 +1095,8 @@ TypeInfo SemanticAnalyzer::analyzeCall(CallExprAST *expr)
             analyzeExpr(arg.get());
         }
         // Return the function pointer's return type if we have it
-        if (func->type.funcPtrInfo) {
+        if (func->type.funcPtrInfo)
+        {
             QuarkType retType = IntegerTypeUtils::stringToQuarkType(func->type.funcPtrInfo->returnType);
             return TypeInfo(retType, expr->location);
         }
@@ -1317,50 +1324,71 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
 TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
 {
     Symbol *structSym = symbolTable_.lookup(expr->structName);
-    
+
     // Check if this is actually a variable or parameter (instance method call parsed as static)
-    if (structSym && (structSym->kind == Symbol::Kind::Variable || structSym->kind == Symbol::Kind::Parameter)) {
+    if (structSym && (structSym->kind == Symbol::Kind::Variable || structSym->kind == Symbol::Kind::Parameter))
+    {
         // This is an instance method call, not a static call
         // Treat it like a method call on the variable
         TypeInfo objType = resolveType(structSym->typeName);
         objType.structName = structSym->structName;
-        
+
         // Handle array methods
-        if (objType.type == QuarkType::Array) {
+        if (objType.type == QuarkType::Array)
+        {
             if (expr->methodName == "length" || expr->methodName == "slice" ||
-                expr->methodName == "push" || expr->methodName == "pop" || expr->methodName == "free") {
-                for (auto &arg : expr->args) {
+                expr->methodName == "push" || expr->methodName == "pop" || expr->methodName == "free")
+            {
+                for (auto &arg : expr->args)
+                {
                     analyzeExpr(arg.get());
                 }
-                
-                if (expr->methodName == "length") {
+
+                if (expr->methodName == "length")
+                {
                     return TypeInfo(QuarkType::Int, expr->location);
-                } else if (expr->methodName == "slice" || expr->methodName == "push") {
+                }
+                else if (expr->methodName == "slice" || expr->methodName == "push")
+                {
                     return objType;
-                } else if (expr->methodName == "pop") {
+                }
+                else if (expr->methodName == "pop")
+                {
                     return TypeInfo(QuarkType::Void, expr->location);
-                } else if (expr->methodName == "free") {
+                }
+                else if (expr->methodName == "free")
+                {
                     return TypeInfo(QuarkType::Void, expr->location);
                 }
             }
             error("arrays do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
-        
-        if (objType.type == QuarkType::String) {
-            if (expr->methodName == "length" || expr->methodName == "slice" || 
-                expr->methodName == "find" || expr->methodName == "replace" || expr->methodName == "split") {
-                for (auto &arg : expr->args) {
+
+        if (objType.type == QuarkType::String)
+        {
+            if (expr->methodName == "length" || expr->methodName == "slice" ||
+                expr->methodName == "find" || expr->methodName == "replace" || expr->methodName == "split")
+            {
+                for (auto &arg : expr->args)
+                {
                     analyzeExpr(arg.get());
                 }
-                
-                if (expr->methodName == "length") {
+
+                if (expr->methodName == "length")
+                {
                     return TypeInfo(QuarkType::Int, expr->location);
-                } else if (expr->methodName == "slice" || expr->methodName == "replace") {
+                }
+                else if (expr->methodName == "slice" || expr->methodName == "replace")
+                {
                     return TypeInfo(QuarkType::String, expr->location);
-                } else if (expr->methodName == "find") {
+                }
+                else if (expr->methodName == "find")
+                {
                     return TypeInfo(QuarkType::Boolean, expr->location);
-                } else if (expr->methodName == "split") {
+                }
+                else if (expr->methodName == "split")
+                {
                     TypeInfo arrType(QuarkType::Array, expr->location);
                     arrType.elementType = QuarkType::String;
                     return arrType;
@@ -1369,19 +1397,27 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
             error("strings do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
-        
-        if (objType.type == QuarkType::Map) {
+
+        if (objType.type == QuarkType::Map)
+        {
             if (expr->methodName == "get" || expr->methodName == "set" ||
                 expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "len" ||
-                expr->methodName == "remove" || expr->methodName == "free") {
-                for (auto &arg : expr->args) {
+                expr->methodName == "remove" || expr->methodName == "free")
+            {
+                for (auto &arg : expr->args)
+                {
                     analyzeExpr(arg.get());
                 }
-                if (expr->methodName == "get") {
+                if (expr->methodName == "get")
+                {
                     return TypeInfo(QuarkType::String, expr->location);
-                } else if (expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "remove") {
+                }
+                else if (expr->methodName == "has" || expr->methodName == "contains" || expr->methodName == "remove")
+                {
                     return TypeInfo(QuarkType::Boolean, expr->location);
-                } else if (expr->methodName == "len") {
+                }
+                else if (expr->methodName == "len")
+                {
                     return TypeInfo(QuarkType::Int, expr->location);
                 }
                 return TypeInfo(QuarkType::Void, expr->location);
@@ -1389,18 +1425,24 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
             error("maps do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
-        
-        if (objType.type == QuarkType::List) {
+
+        if (objType.type == QuarkType::List)
+        {
             if (expr->methodName == "push" || expr->methodName == "append" ||
                 expr->methodName == "get" || expr->methodName == "set" ||
                 expr->methodName == "len" || expr->methodName == "length" ||
-                expr->methodName == "remove" || expr->methodName == "free") {
-                for (auto &arg : expr->args) {
+                expr->methodName == "remove" || expr->methodName == "free")
+            {
+                for (auto &arg : expr->args)
+                {
                     analyzeExpr(arg.get());
                 }
-                if (expr->methodName == "get") {
+                if (expr->methodName == "get")
+                {
                     return TypeInfo(QuarkType::String, expr->location);
-                } else if (expr->methodName == "len" || expr->methodName == "length") {
+                }
+                else if (expr->methodName == "len" || expr->methodName == "length")
+                {
                     return TypeInfo(QuarkType::Int, expr->location);
                 }
                 return TypeInfo(QuarkType::Void, expr->location);
@@ -1408,28 +1450,31 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
             error("lists do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
-        
-        if (objType.type != QuarkType::Struct && objType.type != QuarkType::Pointer) {
+
+        if (objType.type != QuarkType::Struct && objType.type != QuarkType::Pointer)
+        {
             error("method call requires struct type", expr->location, "E113");
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
-        
+
         Symbol *method = findMethod(objType.structName, expr->methodName);
-        if (!method) {
+        if (!method)
+        {
             error("struct '" + objType.structName + "' has no method '" + expr->methodName + "'",
                   expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
-        
-        for (auto &arg : expr->args) {
+
+        for (auto &arg : expr->args)
+        {
             analyzeExpr(arg.get());
         }
-        
+
         TypeInfo retType = resolveType(method->returnType);
         retType.location = expr->location;
         return retType;
     }
-    
+
     // It's a true static call on a struct type
     if (!structSym || structSym->kind != Symbol::Kind::Struct)
     {
@@ -1632,7 +1677,7 @@ TypeInfo SemanticAnalyzer::analyzeUnary(UnaryExprAST *expr)
         }
         return TypeInfo(QuarkType::Boolean, expr->location);
 
-    case '~':  // Bitwise NOT
+    case '~': // Bitwise NOT
         if (operandType.type != QuarkType::Int)
         {
             error("bitwise NOT requires integer operand", expr->location, "E146");
@@ -1769,19 +1814,22 @@ TypeInfo SemanticAnalyzer::analyzeCast(CastExpr *expr)
 TypeInfo SemanticAnalyzer::analyzeAddressOf(AddressOfExpr *expr)
 {
     // Check if the operand is a function name
-    if (auto *varExpr = dynamic_cast<VariableExprAST *>(expr->operand.get())) {
+    if (auto *varExpr = dynamic_cast<VariableExprAST *>(expr->operand.get()))
+    {
         Symbol *sym = symbolTable_.lookup(varExpr->name);
-        if (sym && sym->kind == Symbol::Kind::Function) {
+        if (sym && sym->kind == Symbol::Kind::Function)
+        {
             // This is &functionName - return function pointer type
             auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
             fpInfo->returnType = sym->returnType.empty() ? "void" : sym->returnType;
-            for (const auto& param : sym->functionParams) {
+            for (const auto &param : sym->functionParams)
+            {
                 fpInfo->paramTypes.push_back(param.second);
             }
             return TypeInfo(QuarkType::FunctionPointer, expr->location, "", QuarkType::Unknown, 0, fpInfo->toString(), fpInfo);
         }
     }
-    
+
     TypeInfo operandType = analyzeExpr(expr->operand.get());
 
     TypeInfo ptrType(QuarkType::Pointer, expr->location);
@@ -1850,15 +1898,17 @@ bool SemanticAnalyzer::canImplicitlyConvert(const TypeInfo &from, const TypeInfo
         return true;
     if (from.type == QuarkType::Boolean && to.type == QuarkType::Int)
         return true;
-    
+
     // Allow function pointers to be assigned to void*
     if (from.type == QuarkType::FunctionPointer && to.type == QuarkType::Pointer &&
-        to.elementType == QuarkType::Void) {
+        to.elementType == QuarkType::Void)
+    {
         return true;
     }
-    
+
     // Allow array literals to be assigned to list type
-    if (from.type == QuarkType::Array && to.type == QuarkType::List) {
+    if (from.type == QuarkType::Array && to.type == QuarkType::List)
+    {
         return true;
     }
 
@@ -1888,25 +1938,30 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
         return TypeInfo(QuarkType::Boolean);
     if (typeName == "void")
         return TypeInfo(QuarkType::Void);
-    
+
     // Handle function pointer types: fn(args) -> ret
     if (IntegerTypeUtils::isFunctionPointerType(typeName))
     {
         auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
         // Parse format: fn(int, str) -> int
-        if (typeName.size() > 2 && typeName.substr(0, 2) == "fn" && typeName[2] == '(') {
+        if (typeName.size() > 2 && typeName.substr(0, 2) == "fn" && typeName[2] == '(')
+        {
             size_t parenClose = typeName.find(')');
-            if (parenClose != std::string::npos) {
+            if (parenClose != std::string::npos)
+            {
                 // Extract parameter types
                 std::string paramsStr = typeName.substr(3, parenClose - 3);
-                if (!paramsStr.empty()) {
+                if (!paramsStr.empty())
+                {
                     size_t pos = 0, lastPos = 0;
-                    while ((pos = paramsStr.find(',', lastPos)) != std::string::npos) {
+                    while ((pos = paramsStr.find(',', lastPos)) != std::string::npos)
+                    {
                         std::string param = paramsStr.substr(lastPos, pos - lastPos);
                         // Trim whitespace
                         size_t start = param.find_first_not_of(" \t");
                         size_t end = param.find_last_not_of(" \t");
-                        if (start != std::string::npos && end != std::string::npos) {
+                        if (start != std::string::npos && end != std::string::npos)
+                        {
                             fpInfo->paramTypes.push_back(param.substr(start, end - start + 1));
                         }
                         lastPos = pos + 1;
@@ -1915,21 +1970,26 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
                     std::string param = paramsStr.substr(lastPos);
                     size_t start = param.find_first_not_of(" \t");
                     size_t end = param.find_last_not_of(" \t");
-                    if (start != std::string::npos && end != std::string::npos) {
+                    if (start != std::string::npos && end != std::string::npos)
+                    {
                         fpInfo->paramTypes.push_back(param.substr(start, end - start + 1));
                     }
                 }
-                
+
                 // Extract return type (after "->")
                 size_t arrowPos = typeName.find("->", parenClose);
-                if (arrowPos != std::string::npos) {
+                if (arrowPos != std::string::npos)
+                {
                     std::string retStr = typeName.substr(arrowPos + 2);
                     size_t start = retStr.find_first_not_of(" \t");
                     size_t end = retStr.find_last_not_of(" \t");
-                    if (start != std::string::npos && end != std::string::npos) {
+                    if (start != std::string::npos && end != std::string::npos)
+                    {
                         fpInfo->returnType = retStr.substr(start, end - start + 1);
                     }
-                } else {
+                }
+                else
+                {
                     fpInfo->returnType = "void";
                 }
             }
@@ -2019,7 +2079,8 @@ std::string SemanticAnalyzer::typeToString(const TypeInfo &type)
     case QuarkType::Pointer:
         return type.pointerTypeName.empty() ? "ptr" : type.pointerTypeName;
     case QuarkType::FunctionPointer:
-        if (type.funcPtrInfo) {
+        if (type.funcPtrInfo)
+        {
             return type.funcPtrInfo->toString();
         }
         return type.pointerTypeName.empty() ? "fn" : type.pointerTypeName;

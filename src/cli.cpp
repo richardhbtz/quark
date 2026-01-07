@@ -21,48 +21,59 @@
 // Global CLI instance
 CLI g_cli;
 
-CLI::CLI() : outputLevel_(OutputLevel::NORMAL), colorEnabled_(true), spinnerActive_(false) {
+CLI::CLI() : outputLevel_(OutputLevel::NORMAL), colorEnabled_(true), spinnerActive_(false)
+{
     detectColorSupport();
 }
 
-static bool detectUnicodeSupport() {
+static bool detectUnicodeSupport()
+{
 #ifdef _WIN32
-            UINT cp = GetConsoleOutputCP();
+    UINT cp = GetConsoleOutputCP();
     return cp == 65001;
 #else
-        const char* lang = getenv("LANG");
-    if (!lang) return true; // assume UTF-8 by default
+    const char *lang = getenv("LANG");
+    if (!lang)
+        return true; // assume UTF-8 by default
     std::string s(lang);
-    for (auto &c : s) c = tolower(c);
+    for (auto &c : s)
+        c = tolower(c);
     return s.find("utf-8") != std::string::npos || s.find("utf8") != std::string::npos;
 #endif
 }
 
-void CLI::setOutputLevel(OutputLevel level) {
+void CLI::setOutputLevel(OutputLevel level)
+{
     outputLevel_ = level;
 }
 
-void CLI::setColorEnabled(bool enabled) {
+void CLI::setColorEnabled(bool enabled)
+{
     colorEnabled_ = enabled;
 }
 
-bool CLI::isColorEnabled() const {
+bool CLI::isColorEnabled() const
+{
     return colorEnabled_;
 }
 
-void CLI::setEchoEnabled(bool enabled) {
+void CLI::setEchoEnabled(bool enabled)
+{
     echoEnabled_ = enabled;
 }
 
-bool CLI::isEchoEnabled() const {
+bool CLI::isEchoEnabled() const
+{
     return echoEnabled_;
 }
 
-void CLI::detectColorSupport() {
+void CLI::detectColorSupport()
+{
 #ifdef _WIN32
-        HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
+    HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD dwMode = 0;
-    if (GetConsoleMode(hOut, &dwMode)) {
+    if (GetConsoleMode(hOut, &dwMode))
+    {
         dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
         SetConsoleMode(hOut, dwMode);
     }
@@ -73,90 +84,143 @@ void CLI::detectColorSupport() {
     unicodeEnabled_ = detectUnicodeSupport();
 }
 
-std::string CLI::colorize(const std::string& text, const std::string& color) {
-    if (!colorEnabled_) return text;
+std::string CLI::colorize(const std::string &text, const std::string &color)
+{
+    if (!colorEnabled_)
+        return text;
     return color + text + Colors::RESET;
 }
 
-std::string CLI::getTypeColor(MessageType type) const {
-    switch (type) {
-        case MessageType::SUCCESS: return Colors::BRIGHT_GREEN;
-        case MessageType::ERROR: return Colors::BRIGHT_RED;
-        case MessageType::WARNING: return Colors::BRIGHT_YELLOW;
-        case MessageType::INFO: return Colors::BRIGHT_BLUE;
-        case MessageType::PROGRESS: return Colors::BRIGHT_CYAN;
-        case MessageType::DEBUG: return Colors::GRAY;
-        default: return Colors::RESET;
+std::string CLI::getTypeColor(MessageType type) const
+{
+    switch (type)
+    {
+    case MessageType::SUCCESS:
+        return Colors::BRIGHT_GREEN;
+    case MessageType::ERROR:
+        return Colors::BRIGHT_RED;
+    case MessageType::WARNING:
+        return Colors::BRIGHT_YELLOW;
+    case MessageType::INFO:
+        return Colors::BRIGHT_BLUE;
+    case MessageType::PROGRESS:
+        return Colors::BRIGHT_CYAN;
+    case MessageType::DEBUG:
+        return Colors::GRAY;
+    default:
+        return Colors::RESET;
     }
 }
 
-std::string CLI::getTypePrefix(MessageType type) const {
-    if (!unicodeEnabled_) {
-        switch (type) {
-            case MessageType::SUCCESS: return "ok ";
-            case MessageType::ERROR: return "err ";
-            case MessageType::WARNING: return "warn ";
-            case MessageType::INFO: return ". ";
-            case MessageType::PROGRESS: return "> ";
-            case MessageType::DEBUG: return "~ ";
-            default: return "";
+std::string CLI::getTypePrefix(MessageType type) const
+{
+    if (!unicodeEnabled_)
+    {
+        switch (type)
+        {
+        case MessageType::SUCCESS:
+            return "ok ";
+        case MessageType::ERROR:
+            return "err ";
+        case MessageType::WARNING:
+            return "warn ";
+        case MessageType::INFO:
+            return ". ";
+        case MessageType::PROGRESS:
+            return "> ";
+        case MessageType::DEBUG:
+            return "~ ";
+        default:
+            return "";
         }
     }
 
-    switch (type) {
-        case MessageType::SUCCESS: return Symbols::SUCCESS + " ";
-        case MessageType::ERROR: return Symbols::ERROR + " ";
-        case MessageType::WARNING: return Symbols::WARNING + " ";
-        case MessageType::INFO: return Symbols::INFO + " ";
-        case MessageType::PROGRESS: return Symbols::PROGRESS + " ";
-        case MessageType::DEBUG: return Symbols::DEBUG + " ";
-        default: return "";
+    switch (type)
+    {
+    case MessageType::SUCCESS:
+        return Symbols::SUCCESS + " ";
+    case MessageType::ERROR:
+        return Symbols::ERROR + " ";
+    case MessageType::WARNING:
+        return Symbols::WARNING + " ";
+    case MessageType::INFO:
+        return Symbols::INFO + " ";
+    case MessageType::PROGRESS:
+        return Symbols::PROGRESS + " ";
+    case MessageType::DEBUG:
+        return Symbols::DEBUG + " ";
+    default:
+        return "";
     }
 }
 
-bool CLI::shouldPrint(MessageType type) const {
-    switch (type) {
-        case MessageType::ERROR:
-            return true; // Always print errors
-        case MessageType::WARNING:
-            return outputLevel_ >= OutputLevel::NORMAL;
-        case MessageType::SUCCESS:
-        case MessageType::INFO:
-        case MessageType::PROGRESS:
-            return outputLevel_ >= OutputLevel::NORMAL;
-        case MessageType::DEBUG:
-            return outputLevel_ >= OutputLevel::DEBUG;
-        default:
-            return outputLevel_ >= OutputLevel::NORMAL;
+bool CLI::shouldPrint(MessageType type) const
+{
+    switch (type)
+    {
+    case MessageType::ERROR:
+        return true; // Always print errors
+    case MessageType::WARNING:
+        return outputLevel_ >= OutputLevel::NORMAL;
+    case MessageType::SUCCESS:
+    case MessageType::INFO:
+    case MessageType::PROGRESS:
+        return outputLevel_ >= OutputLevel::NORMAL;
+    case MessageType::DEBUG:
+        return outputLevel_ >= OutputLevel::DEBUG;
+    default:
+        return outputLevel_ >= OutputLevel::NORMAL;
     }
 }
 
-std::string CLI::formatMessage(const std::string& message, MessageType type) {
-    if (!shouldPrint(type)) return "";
+std::string CLI::formatMessage(const std::string &message, MessageType type)
+{
+    if (!shouldPrint(type))
+        return "";
 
     std::string prefix = getTypePrefix(type);
     std::string color = getTypeColor(type);
 
-    if (colorEnabled_) {
+    if (colorEnabled_)
+    {
         return colorize(prefix, color) + message;
-    } else {
+    }
+    else
+    {
         std::string textPrefix;
-        switch (type) {
-            case MessageType::SUCCESS: textPrefix = "ok "; break;
-            case MessageType::ERROR: textPrefix = "err "; break;
-            case MessageType::WARNING: textPrefix = "warn "; break;
-            case MessageType::INFO: textPrefix = ". "; break;
-            case MessageType::PROGRESS: textPrefix = "> "; break;
-            case MessageType::DEBUG: textPrefix = "~ "; break;
-            default: textPrefix = ""; break;
+        switch (type)
+        {
+        case MessageType::SUCCESS:
+            textPrefix = "ok ";
+            break;
+        case MessageType::ERROR:
+            textPrefix = "err ";
+            break;
+        case MessageType::WARNING:
+            textPrefix = "warn ";
+            break;
+        case MessageType::INFO:
+            textPrefix = ". ";
+            break;
+        case MessageType::PROGRESS:
+            textPrefix = "> ";
+            break;
+        case MessageType::DEBUG:
+            textPrefix = "~ ";
+            break;
+        default:
+            textPrefix = "";
+            break;
         }
         return textPrefix + message;
     }
 }
 
-void CLI::print(const std::string& message, MessageType type) {
+void CLI::print(const std::string &message, MessageType type)
+{
     std::string formatted = formatMessage(message, type);
-    if (!formatted.empty()) {
+    if (!formatted.empty())
+    {
         if (messageHandler_)
             messageHandler_(type, message, false);
         if (echoEnabled_)
@@ -164,9 +228,11 @@ void CLI::print(const std::string& message, MessageType type) {
     }
 }
 
-void CLI::println(const std::string& message, MessageType type) {
+void CLI::println(const std::string &message, MessageType type)
+{
     std::string formatted = formatMessage(message, type);
-    if (!formatted.empty()) {
+    if (!formatted.empty())
+    {
         if (messageHandler_)
             messageHandler_(type, message, true);
         if (echoEnabled_)
@@ -174,64 +240,80 @@ void CLI::println(const std::string& message, MessageType type) {
     }
 }
 
-void CLI::printRaw(const std::string& message) {
+void CLI::printRaw(const std::string &message)
+{
     if (rawOutputHandler_)
         rawOutputHandler_(message, false);
     if (echoEnabled_)
         std::cout << message << std::flush;
 }
 
-void CLI::printlnRaw(const std::string& message) {
+void CLI::printlnRaw(const std::string &message)
+{
     if (rawOutputHandler_)
         rawOutputHandler_(message, true);
     if (echoEnabled_)
         std::cout << message << std::endl;
 }
 
-void CLI::success(const std::string& message) {
+void CLI::success(const std::string &message)
+{
     println(message, MessageType::SUCCESS);
 }
 
-void CLI::error(const std::string& message) {
+void CLI::error(const std::string &message)
+{
     println(message, MessageType::ERROR);
 }
 
-void CLI::warning(const std::string& message) {
+void CLI::warning(const std::string &message)
+{
     println(message, MessageType::WARNING);
 }
 
-void CLI::info(const std::string& message) {
+void CLI::info(const std::string &message)
+{
     println(message, MessageType::INFO);
 }
 
-void CLI::debug(const std::string& message) {
+void CLI::debug(const std::string &message)
+{
     println(message, MessageType::DEBUG);
 }
 
-void CLI::progress(const std::string& message) {
+void CLI::progress(const std::string &message)
+{
     println(message, MessageType::PROGRESS);
 }
 
-void CLI::clearCurrentLine() {
+void CLI::clearCurrentLine()
+{
     if (!echoEnabled_)
         return;
-    if (colorEnabled_) {
+    if (colorEnabled_)
+    {
         std::cout << "\r\033[K" << std::flush;
-    } else {
+    }
+    else
+    {
         std::cout << "\r" << std::string(80, ' ') << "\r" << std::flush;
     }
 }
 
-void CLI::moveCursorUp(int lines) {
+void CLI::moveCursorUp(int lines)
+{
     if (!echoEnabled_)
         return;
-    if (colorEnabled_) {
+    if (colorEnabled_)
+    {
         std::cout << "\033[" << lines << "A" << std::flush;
     }
 }
 
-void CLI::startSpinner(const std::string& message) {
-    if (!shouldPrint(MessageType::PROGRESS)) return;
+void CLI::startSpinner(const std::string &message)
+{
+    if (!shouldPrint(MessageType::PROGRESS))
+        return;
 
     spinnerActive_ = true;
     currentSpinnerMessage_ = message;
@@ -240,61 +322,79 @@ void CLI::startSpinner(const std::string& message) {
     print(formatMessage(message + "...", MessageType::PROGRESS));
 }
 
-void CLI::updateSpinner(const std::string& message) {
-    if (!spinnerActive_ || !shouldPrint(MessageType::PROGRESS)) return;
+void CLI::updateSpinner(const std::string &message)
+{
+    if (!spinnerActive_ || !shouldPrint(MessageType::PROGRESS))
+        return;
 
     clearCurrentLine();
     currentSpinnerMessage_ = message;
     print(formatMessage(message + "...", MessageType::PROGRESS));
 }
 
-void CLI::stopSpinner(bool success) {
-    if (!spinnerActive_) return;
+void CLI::stopSpinner(bool success)
+{
+    if (!spinnerActive_)
+        return;
 
     spinnerActive_ = false;
     if (echoEnabled_)
         clearCurrentLine();
 
-    if (success) {
+    if (success)
+    {
         println(currentSpinnerMessage_, MessageType::SUCCESS);
-    } else {
-                if (outputLevel_ != OutputLevel::QUIET) {
+    }
+    else
+    {
+        if (outputLevel_ != OutputLevel::QUIET)
+        {
             println(currentSpinnerMessage_ + " failed", MessageType::ERROR);
         }
     }
 }
 
-void CLI::setMessageHandler(MessageHandler handler) {
+void CLI::setMessageHandler(MessageHandler handler)
+{
     messageHandler_ = std::move(handler);
 }
 
-void CLI::setRawOutputHandler(RawOutputHandler handler) {
+void CLI::setRawOutputHandler(RawOutputHandler handler)
+{
     rawOutputHandler_ = std::move(handler);
 }
 
-void CLI::startProgress(const std::string& message) {
+void CLI::startProgress(const std::string &message)
+{
     progress(message);
 }
 
-void CLI::updateProgress(const std::string& message) {
+void CLI::updateProgress(const std::string &message)
+{
     progress(message);
 }
 
-void CLI::finishProgress(const std::string& message, bool success) {
-    if (success) {
+void CLI::finishProgress(const std::string &message, bool success)
+{
+    if (success)
+    {
         this->success(message);
-    } else {
+    }
+    else
+    {
         error(message);
     }
 }
 
-void CLI::printVersion() {
+void CLI::printVersion()
+{
     printlnRaw(colorize("Quark", Colors::BOLD + Colors::BRIGHT_MAGENTA) + " " +
-            colorize("0.1.0", Colors::BRIGHT_CYAN));
+               colorize("0.1.0", Colors::BRIGHT_CYAN));
     printlnRaw(colorize("A modern systems programming language", Colors::GRAY));
 }
 
-void CLI::printUsage() {
+void CLI::printUsage()
+{
     printlnRaw(colorize("Usage:", Colors::BOLD) + " quark [OPTIONS] [FILE]");
     printlnRaw("");
     printlnRaw(colorize("Arguments:", Colors::BOLD));
@@ -318,7 +418,8 @@ void CLI::printUsage() {
     printlnRaw("  -l <LIB>         Link against an additional library (repeatable)");
 }
 
-void CLI::printHelp() {
+void CLI::printHelp()
+{
     printVersion();
     printlnRaw("");
     printUsage();
@@ -339,86 +440,147 @@ void CLI::printHelp() {
 }
 
 // CLIArgs implementation
-CLIArgs CLIArgs::parse(int argc, char** argv) {
+CLIArgs CLIArgs::parse(int argc, char **argv)
+{
     CLIArgs args;
 
-    for (int i = 1; i < argc; ++i) {
+    for (int i = 1; i < argc; ++i)
+    {
         std::string arg = argv[i];
 
-        if (arg == "-h" || arg == "--help") {
+        if (arg == "-h" || arg == "--help")
+        {
             args.showHelp = true;
-        } else if (arg == "-V" || arg == "--version") {
+        }
+        else if (arg == "-V" || arg == "--version")
+        {
             args.showVersion = true;
-        } else if (arg == "-v" || arg == "--verbose") {
+        }
+        else if (arg == "-v" || arg == "--verbose")
+        {
             args.verbosity = OutputLevel::VERBOSE;
-        } else if (arg == "-q" || arg == "--quiet") {
+        }
+        else if (arg == "-q" || arg == "--quiet")
+        {
             args.verbosity = OutputLevel::QUIET;
-        } else if (arg == "--debug") {
+        }
+        else if (arg == "--debug")
+        {
             args.verbosity = OutputLevel::DEBUG;
-        } else if (arg == "--freestanding") {
+        }
+        else if (arg == "--freestanding")
+        {
             args.freeStanding = true;
-        } else if (arg == "--no-color") {
+        }
+        else if (arg == "--no-color")
+        {
             args.colorOutput = false;
-        } else if (arg == "--emit-llvm") {
+        }
+        else if (arg == "--emit-llvm")
+        {
             args.emitLLVM = true;
             args.emitAssembly = false;
-        } else if (arg == "--emit-asm") {
+        }
+        else if (arg == "--emit-asm")
+        {
             args.emitAssembly = true;
             args.emitLLVM = false;
-        } else if (arg == "-O" || arg == "-O1") {
+        }
+        else if (arg == "-O" || arg == "-O1")
+        {
             args.optimize = true;
             args.optimizationLevel = 1;
-        } else if (arg == "-O0") {
+        }
+        else if (arg == "-O0")
+        {
             args.optimize = false;
             args.optimizationLevel = 0;
-        } else if (arg == "-O2") {
+        }
+        else if (arg == "-O2")
+        {
             args.optimize = true;
             args.optimizationLevel = 2;
-        } else if (arg == "-O3") {
+        }
+        else if (arg == "-O3")
+        {
             args.optimize = true;
             args.optimizationLevel = 3;
-        } else if (arg == "-o") {
-            if (i + 1 < argc) {
+        }
+        else if (arg == "-o")
+        {
+            if (i + 1 < argc)
+            {
                 args.outputFile = argv[++i];
-            } else {
+            }
+            else
+            {
                 g_cli.error("Option -o requires an argument");
                 args.showHelp = true;
             }
-        } else if (arg == "--libpath" || arg == "-L") {
-            if (i + 1 < argc) {
+        }
+        else if (arg == "--libpath" || arg == "-L")
+        {
+            if (i + 1 < argc)
+            {
                 args.libraryPaths.push_back(argv[++i]);
-            } else {
+            }
+            else
+            {
                 g_cli.error("Option --libpath requires an argument");
                 args.showHelp = true;
             }
-        } else if (arg.rfind("-L", 0) == 0 && arg.size() > 2) {
+        }
+        else if (arg.rfind("-L", 0) == 0 && arg.size() > 2)
+        {
             args.libraryPaths.push_back(arg.substr(2));
-        } else if (arg == "--link-lib" || arg == "-l") {
-            if (i + 1 < argc) {
+        }
+        else if (arg == "--link-lib" || arg == "-l")
+        {
+            if (i + 1 < argc)
+            {
                 args.linkLibraries.push_back(argv[++i]);
-            } else {
+            }
+            else
+            {
                 g_cli.error("Option --link-lib requires an argument");
                 args.showHelp = true;
             }
-        } else if (arg.rfind("-l", 0) == 0 && arg.size() > 2) {
+        }
+        else if (arg.rfind("-l", 0) == 0 && arg.size() > 2)
+        {
             args.linkLibraries.push_back(arg.substr(2));
-        } else if (arg == "--no-cache") {
+        }
+        else if (arg == "--no-cache")
+        {
             args.useCache = false;
-        } else if (arg == "--clear-cache") {
+        }
+        else if (arg == "--clear-cache")
+        {
             args.clearCache = true;
-        } else if (arg == "--cache-dir") {
-            if (i + 1 < argc) {
+        }
+        else if (arg == "--cache-dir")
+        {
+            if (i + 1 < argc)
+            {
                 args.cacheDir = argv[++i];
-            } else {
+            }
+            else
+            {
                 g_cli.error("Option --cache-dir requires an argument");
                 args.showHelp = true;
             }
-        } else if (arg.find(".k") != std::string::npos) {
+        }
+        else if (arg.find(".k") != std::string::npos)
+        {
             args.inputFile = arg;
-        } else if (arg[0] == '-') {
+        }
+        else if (arg[0] == '-')
+        {
             g_cli.error("Unknown option: " + arg);
             args.showHelp = true;
-        } else {
+        }
+        else
+        {
             args.inputFile = arg;
         }
     }
@@ -426,17 +588,21 @@ CLIArgs CLIArgs::parse(int argc, char** argv) {
     return args;
 }
 
-bool CLIArgs::validate(CLI& cli) const {
-    if (showHelp || showVersion) {
+bool CLIArgs::validate(CLI &cli) const
+{
+    if (showHelp || showVersion)
+    {
         return true; // These are valid states
     }
 
-    if (inputFile.empty()) {
+    if (inputFile.empty())
+    {
         cli.error("No input file specified");
         return false;
     }
 
-    if (outputFile.empty()) {
+    if (outputFile.empty())
+    {
         cli.error("No output file specified");
         return false;
     }
@@ -444,7 +610,8 @@ bool CLIArgs::validate(CLI& cli) const {
     return true;
 }
 
-void CLIArgs::printDetailedHelp(CLI& cli) {
+void CLIArgs::printDetailedHelp(CLI &cli)
+{
     cli.printHelp();
     cli.printlnRaw("");
 

@@ -7,23 +7,28 @@
 
 std::unique_ptr<ErrorReporter> g_errorReporter;
 
-ErrorReporter::ErrorReporter(CLI &cli, bool useFTXUI) 
-    : cli_(cli), useFTXUI_(useFTXUI) {
-    if (useFTXUI_) {
+ErrorReporter::ErrorReporter(CLI &cli, bool useFTXUI)
+    : cli_(cli), useFTXUI_(useFTXUI)
+{
+    if (useFTXUI_)
+    {
         ftxuiDisplay_ = std::make_unique<FTXUIErrorDisplay>(cli.isColorEnabled());
     }
 }
 
 ErrorReporter::~ErrorReporter() = default;
 
-void ErrorReporter::setUseFTXUI(bool enabled) {
+void ErrorReporter::setUseFTXUI(bool enabled)
+{
     useFTXUI_ = enabled;
-    if (enabled && !ftxuiDisplay_) {
+    if (enabled && !ftxuiDisplay_)
+    {
         ftxuiDisplay_ = std::make_unique<FTXUIErrorDisplay>(cli_.isColorEnabled());
     }
 }
 
-bool ErrorReporter::isUsingFTXUI() const {
+bool ErrorReporter::isUsingFTXUI() const
+{
     return useFTXUI_ && ftxuiDisplay_ != nullptr;
 }
 
@@ -131,7 +136,7 @@ std::string ErrorReporter::formatLineNumber(int lineNum, int maxLineNum)
 
 std::string ErrorReporter::normalizeForDisplay(const std::string &line, int tabWidth)
 {
-        std::string out;
+    std::string out;
     out.reserve(line.size());
     int col = 0;
     for (char ch : line)
@@ -155,18 +160,19 @@ std::string ErrorReporter::normalizeForDisplay(const std::string &line, int tabW
 
 std::string ErrorReporter::createCaretIndicator(const std::string &originalLine, int column, int length)
 {
-        const int tabWidth = 4;
+    const int tabWidth = 4;
     std::string line = normalizeForDisplay(originalLine, tabWidth);
     std::string indicator(line.length(), ' ');
 
-        int visualStart = 0;
+    int visualStart = 0;
     int logicalIndex = std::max(0, column - 1);
     int processed = 0;
     for (size_t i = 0; i < originalLine.size() && processed < logicalIndex; ++i)
     {
         char ch = originalLine[i];
         if (ch == '\r')
-            continue;         if (ch == '\t')
+            continue;
+        if (ch == '\t')
         {
             int spaces = tabWidth - (visualStart % tabWidth);
             visualStart += spaces;
@@ -196,7 +202,7 @@ std::string ErrorReporter::formatErrorHeader(const ErrorContext &context)
     oss << (context.isWarning ? "warning" : "error");
     if (!context.errorCode.empty())
         oss << "[" << context.errorCode << "]";
-        std::string msg = context.message;
+    std::string msg = context.message;
     size_t p = msg.rfind("error: ");
     if (p != std::string::npos)
         msg = msg.substr(p + std::string("error: ").size());
@@ -217,7 +223,7 @@ std::string ErrorReporter::formatSourceBlock(const ErrorContext &context)
 {
     std::ostringstream oss;
 
-        std::vector<std::string> lines;
+    std::vector<std::string> lines;
     std::vector<int> lineNums;
     std::string errorLine;
     std::string caret;
@@ -248,7 +254,7 @@ std::string ErrorReporter::formatSourceBlock(const ErrorContext &context)
         caret = createCaretIndicator(errorLine, context.location.column, context.length);
     }
 
-        size_t errIdx = lines.empty() ? 0 : lines.size() - 1;
+    size_t errIdx = lines.empty() ? 0 : lines.size() - 1;
     for (size_t i = 0; i < lineNums.size(); ++i)
     {
         if (lineNums[i] == context.location.line)
@@ -270,7 +276,7 @@ std::string ErrorReporter::formatSourceBlock(const ErrorContext &context)
     int displayLineNum = lineNums.empty() ? context.location.line : lineNums[errIdx];
     oss << " " << displayLineNum << " | " << displayLine << "\n";
 
-        if (!caret.empty())
+    if (!caret.empty())
     {
         std::string colored;
         bool inRun = false;
@@ -349,12 +355,13 @@ void ErrorReporter::displayError(const ErrorContext &context)
     else
         ++errorCount_;
 
-        if (useFTXUI_ && ftxuiDisplay_) {
+    if (useFTXUI_ && ftxuiDisplay_)
+    {
         ftxuiDisplay_->displayError(context);
         return;
     }
 
-        cli_.printlnRaw(formatErrorHeader(context));
+    cli_.printlnRaw(formatErrorHeader(context));
     cli_.printlnRaw(formatLocation(context));
     cli_.printRaw(formatSourceBlock(context));
 
@@ -457,11 +464,12 @@ std::vector<std::string> ErrorReporter::getErrorSuggestions(const std::string &e
 
 void ErrorReporter::printSummary()
 {
-    if (useFTXUI_ && ftxuiDisplay_) {
+    if (useFTXUI_ && ftxuiDisplay_)
+    {
         ftxuiDisplay_->displaySummary(errorCount_, warningCount_);
         return;
     }
-    
+
     // Fallback to classic display
     if (errorCount_ > 0)
     {

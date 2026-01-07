@@ -17,9 +17,11 @@
 #endif
 
 // Helper function to run an executable and clean up afterward
-static int runAndCleanup(const std::filesystem::path& executable) {
+static int runAndCleanup(const std::filesystem::path &executable)
+{
     std::error_code ec;
-    if (!std::filesystem::exists(executable, ec)) {
+    if (!std::filesystem::exists(executable, ec))
+    {
         g_cli.error("Cannot run missing executable: " + executable.string());
         return 1;
     }
@@ -35,7 +37,8 @@ static int runAndCleanup(const std::filesystem::path& executable) {
     // Clean up the temporary executable
     std::filesystem::remove(executable, ec);
 
-    if (code == -1) {
+    if (code == -1)
+    {
         g_cli.error("Failed to launch executable");
         return 1;
     }
@@ -43,9 +46,10 @@ static int runAndCleanup(const std::filesystem::path& executable) {
     return code;
 }
 
-void setupUTF8Console() {
+void setupUTF8Console()
+{
 #ifdef _WIN32
-        SetConsoleOutputCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
 #endif
 }
@@ -71,15 +75,15 @@ int main(int argc, char **argv)
         std::string_view firstArg{argv[1]};
         std::string firstArgLower(firstArg);
         std::transform(firstArgLower.begin(), firstArgLower.end(), firstArgLower.begin(), ::tolower);
-        
+
         if (firstArgLower == "run" && std::string_view{argv[2]}.find(".k") != std::string_view::npos)
         {
             std::string inputFile = argv[2];
-            
+
             // Set up CLI
             g_cli.setOutputLevel(OutputLevel::NORMAL);
             g_cli.setColorEnabled(true);
-            
+
             // Check if input file exists
             std::error_code ec;
             if (!std::filesystem::exists(inputFile, ec))
@@ -87,27 +91,29 @@ int main(int argc, char **argv)
                 g_cli.error("Source file not found: " + inputFile);
                 return 1;
             }
-            
+
             // Create temp output path
             std::filesystem::path inputPath(inputFile);
             std::filesystem::path tempDir = std::filesystem::temp_directory_path(ec);
-            if (ec) tempDir = ".";
-            
+            if (ec)
+                tempDir = ".";
+
 #ifdef _WIN32
             std::filesystem::path outputPath = tempDir / (inputPath.stem().string() + "_quark_temp.exe");
 #else
             std::filesystem::path outputPath = tempDir / (inputPath.stem().string() + "_quark_temp");
 #endif
-            
+
             // Create compiler
-            QuarkCompilerHandle* compiler = quark_compiler_create();
-            if (!compiler) {
+            QuarkCompilerHandle *compiler = quark_compiler_create();
+            if (!compiler)
+            {
                 g_cli.error("Failed to initialize the Quark compiler library");
                 return 1;
             }
-            
+
             quark_compiler_set_console_echo(compiler, 1);
-            
+
             // Set up options
             QuarkCompilerOptions options{};
             std::string inputPathStr = inputPath.string();
@@ -121,33 +127,35 @@ int main(int argc, char **argv)
             options.emit_asm = 0;
             options.verbosity = static_cast<int>(OutputLevel::NORMAL);
             options.color_output = 1;
-            
+
             // Add exe directory to library paths
             std::vector<std::string> libraryPaths;
-            if (!exePath.empty()) {
+            if (!exePath.empty())
+            {
                 libraryPaths.push_back(exePath.parent_path().string());
             }
-            
-            std::vector<const char*> libraryPathPtrs;
-            for (const auto& path : libraryPaths)
+
+            std::vector<const char *> libraryPathPtrs;
+            for (const auto &path : libraryPaths)
                 libraryPathPtrs.push_back(path.c_str());
             options.library_paths = libraryPathPtrs.data();
             options.library_path_count = libraryPathPtrs.size();
-            
+
             options.link_libraries = nullptr;
             options.link_library_count = 0;
             options.use_cache = 0;
             options.clear_cache = 0;
             options.cache_dir = "";
-            
+
             // Compile
             int status = quark_compiler_compile_file(compiler, &options);
             quark_compiler_destroy(compiler);
-            
-            if (status != QUARK_COMPILE_OK) {
+
+            if (status != QUARK_COMPILE_OK)
+            {
                 return 1;
             }
-            
+
             // Run and clean up
             g_cli.println("");
             return runAndCleanup(outputPath);
@@ -157,52 +165,55 @@ int main(int argc, char **argv)
     if (argc >= 2)
     {
         std::string_view firstArg{argv[1]};
-        
+
         bool isPackageCommand = false;
         if (!firstArg.empty() && firstArg[0] != '-')
         {
             std::string firstArgLower(firstArg);
             std::transform(firstArgLower.begin(), firstArgLower.end(), firstArgLower.begin(), ::tolower);
-            
+
             // Check if second argument is a .k file - if so, use compiler not package manager
             bool hasKFileArg = false;
-            if (argc >= 3) {
+            if (argc >= 3)
+            {
                 std::string secondArg{argv[2]};
-                if (secondArg.size() > 2 && secondArg.substr(secondArg.size() - 2) == ".k") {
+                if (secondArg.size() > 2 && secondArg.substr(secondArg.size() - 2) == ".k")
+                {
                     hasKFileArg = true;
                 }
             }
-            
+
             // "build" and "run" with .k file go to compiler, not package manager
-            if ((firstArgLower == "build" || firstArgLower == "run") && hasKFileArg) {
+            if ((firstArgLower == "build" || firstArgLower == "run") && hasKFileArg)
+            {
                 isPackageCommand = false;
             }
-            else if (firstArgLower == "init" || firstArgLower == "build" || 
-                firstArgLower == "run" || firstArgLower == "clean" ||
-                firstArgLower == "add" || firstArgLower == "remove" ||
-                firstArgLower == "update" || firstArgLower == "test" ||
-                firstArgLower == "publish" || firstArgLower == "install" ||
-                firstArgLower == "package" || firstArgLower == "pkg" || firstArgLower == "pm")
+            else if (firstArgLower == "init" || firstArgLower == "build" ||
+                     firstArgLower == "run" || firstArgLower == "clean" ||
+                     firstArgLower == "add" || firstArgLower == "remove" ||
+                     firstArgLower == "update" || firstArgLower == "test" ||
+                     firstArgLower == "publish" || firstArgLower == "install" ||
+                     firstArgLower == "package" || firstArgLower == "pkg" || firstArgLower == "pm")
             {
                 isPackageCommand = true;
             }
         }
-        
+
         if (isPackageCommand)
         {
             std::string firstArgStr(firstArg);
             std::transform(firstArgStr.begin(), firstArgStr.end(), firstArgStr.begin(), ::tolower);
-            
-                        if (firstArgStr == "package" || firstArgStr == "pkg" || firstArgStr == "pm")
+
+            if (firstArgStr == "package" || firstArgStr == "pkg" || firstArgStr == "pm")
             {
                 int remaining = argc - 2;
-                char** subArgs = argc > 2 ? argv + 2 : nullptr;
+                char **subArgs = argc > 2 ? argv + 2 : nullptr;
                 return run_package_manager_cli(remaining > 0 ? remaining : 0, subArgs, exePath);
             }
             else
             {
-                                int remaining = argc - 1;
-                char** subArgs = argv + 1;
+                int remaining = argc - 1;
+                char **subArgs = argv + 1;
                 return run_package_manager_cli(remaining, subArgs, exePath);
             }
         }
@@ -220,14 +231,15 @@ int main(int argc, char **argv)
             std::string defaultLibPath = normalizedDir.string();
 
             bool alreadyPresent = std::any_of(args.libraryPaths.begin(), args.libraryPaths.end(),
-                                             [&](const std::string &entry) {
-                                                 std::filesystem::path entryPath(entry);
-                                                 entryPath = entryPath.lexically_normal();
-                                                 std::error_code ec;
-                                                 if (std::filesystem::equivalent(entryPath, normalizedDir, ec))
-                                                     return true;
-                                                 return entryPath == normalizedDir;
-                                             });
+                                              [&](const std::string &entry)
+                                              {
+                                                  std::filesystem::path entryPath(entry);
+                                                  entryPath = entryPath.lexically_normal();
+                                                  std::error_code ec;
+                                                  if (std::filesystem::equivalent(entryPath, normalizedDir, ec))
+                                                      return true;
+                                                  return entryPath == normalizedDir;
+                                              });
 
             if (!alreadyPresent)
                 args.libraryPaths.push_back(defaultLibPath);
@@ -235,30 +247,34 @@ int main(int argc, char **argv)
     }
     catch (const std::exception &)
     {
-            }
+    }
 
-        g_cli.setOutputLevel(args.verbosity);
+    g_cli.setOutputLevel(args.verbosity);
     g_cli.setColorEnabled(args.colorOutput);
 
-        if (args.showHelp) {
+    if (args.showHelp)
+    {
         CLIArgs::printDetailedHelp(g_cli);
         return 0;
     }
 
-    if (args.showVersion) {
+    if (args.showVersion)
+    {
         g_cli.printVersion();
         return 0;
     }
 
     // Validate arguments
-    if (!args.validate(g_cli)) {
+    if (!args.validate(g_cli))
+    {
         g_cli.println("");
         g_cli.printUsage();
         return 1;
     }
 
-    QuarkCompilerHandle* compiler = quark_compiler_create();
-    if (!compiler) {
+    QuarkCompilerHandle *compiler = quark_compiler_create();
+    if (!compiler)
+    {
         g_cli.error("Failed to initialize the Quark compiler library");
         return 1;
     }
