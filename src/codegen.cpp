@@ -71,7 +71,7 @@ CodeGen::CodeGen(bool verbose, bool optimize, int optimizationLevel, bool freest
                  std::vector<std::string> additionalLibraries,
                  std::vector<std::string> additionalLibraryPaths,
                  bool showProgress,
-                 CompilationContext* compilationCtx)
+                 CompilationContext *compilationCtx)
     : verbose_(verbose),
       optimize_(optimize),
       freestanding_(freestanding),
@@ -97,8 +97,9 @@ CodeGen::CodeGen(bool verbose, bool optimize, int optimizationLevel, bool freest
     bool_t_ = LLVMInt1TypeInContext(llvmCtx_);
 
     initializeCodeGenModules();
-    
-    if (showProgress_) {
+
+    if (showProgress_)
+    {
         progress_ = std::make_unique<CompilationProgress>(!verbose_);
     }
 }
@@ -161,18 +162,18 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             returnType = LLVMVoidTypeInContext(llvmCtx_);
         else if (f->returnType.size() > 2 && f->returnType.substr(f->returnType.size() - 2) == "[]")
         {
-                        std::string elementType = f->returnType.substr(0, f->returnType.size() - 2);
+            std::string elementType = f->returnType.substr(0, f->returnType.size() - 2);
             if (elementType == "str")
             {
-                                returnType = LLVMPointerType(int8ptr_t_, 0);
+                returnType = LLVMPointerType(int8ptr_t_, 0);
             }
             else if (elementType == "int")
             {
-                                returnType = LLVMPointerType(LLVMInt32TypeInContext(llvmCtx_), 0);
+                returnType = LLVMPointerType(LLVMInt32TypeInContext(llvmCtx_), 0);
             }
             else if (elementType == "bool")
             {
-                                returnType = LLVMPointerType(bool_t_, 0);
+                returnType = LLVMPointerType(bool_t_, 0);
             }
             else
             {
@@ -196,14 +197,14 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         std::vector<LLVMTypeRef> paramTypes;
         bool isVariadic = false;
 
-                bool isStructMethod = (f->name.find("::") != std::string::npos);
+        bool isStructMethod = (f->name.find("::") != std::string::npos);
         bool isConstructor = false;
         if (isStructMethod)
         {
-                        std::string structName = f->name.substr(0, f->name.find("::"));
+            std::string structName = f->name.substr(0, f->name.find("::"));
             std::string methodName = f->name.substr(f->name.find("::") + 2);
 
-                        isConstructor = (methodName == "new" && f->returnType == structName);
+            isConstructor = (methodName == "new" && f->returnType == structName);
 
             if (!isConstructor)
             {
@@ -211,10 +212,11 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
                 if (structIt != g_struct_types_.end())
                 {
                     LLVMTypeRef selfPtrTy = LLVMPointerType(structIt->second, 0);
-                    paramTypes.push_back(selfPtrTy);                     if (verbose_)
+                    paramTypes.push_back(selfPtrTy);
+                    if (verbose_)
                         printf("[codegen] adding implicit 'this' (pointer) parameter of type %s* for method %s\n",
                                structName.c_str(), f->name.c_str());
-                                        paramTypes.push_back(int8ptr_t_);
+                    paramTypes.push_back(int8ptr_t_);
                     if (verbose_)
                         printf("[codegen] inserting hidden dynamic type name param for %s right after 'this'\n", f->name.c_str());
                 }
@@ -236,7 +238,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
                 isVariadic = true;
                 if (verbose_)
                     printf("[codegen] function %s is variadic\n", f->name.c_str());
-                                continue;
+                continue;
             }
 
             if (ptype == "int")
@@ -251,18 +253,18 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
                 paramTypes.push_back(bool_t_);
             else if (ptype.size() > 2 && ptype.substr(ptype.size() - 2) == "[]")
             {
-                                std::string elementType = ptype.substr(0, ptype.size() - 2);
+                std::string elementType = ptype.substr(0, ptype.size() - 2);
                 if (elementType == "str")
                 {
-                                        paramTypes.push_back(LLVMPointerType(int8ptr_t_, 0));
+                    paramTypes.push_back(LLVMPointerType(int8ptr_t_, 0));
                 }
                 else if (elementType == "int")
                 {
-                                        paramTypes.push_back(LLVMPointerType(LLVMInt32TypeInContext(llvmCtx_), 0));
+                    paramTypes.push_back(LLVMPointerType(LLVMInt32TypeInContext(llvmCtx_), 0));
                 }
                 else if (elementType == "bool")
                 {
-                                        paramTypes.push_back(LLVMPointerType(bool_t_, 0));
+                    paramTypes.push_back(LLVMPointerType(bool_t_, 0));
                 }
                 else
                 {
@@ -290,20 +292,20 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         if (verbose_)
             printf("[codegen] adding LLVM function %s to module (variadic: %s)\n", f->name.c_str(), isVariadic ? "yes" : "no");
         LLVMValueRef fn = LLVMAddFunction(module_, f->name.c_str(), ftype);
-                        if (f->name != "main")
+        if (f->name != "main")
         {
             LLVMSetLinkage(fn, LLVMInternalLinkage);
         }
         g_function_map_[f->name] = fn;
-                g_function_param_types_[f->name] = paramTypes;
+        g_function_param_types_[f->name] = paramTypes;
 
-                g_variadic_functions_[f->name] = isVariadic;
+        g_variadic_functions_[f->name] = isVariadic;
         if (verbose_ && isVariadic)
         {
             printf("[codegen] registered function '%s' as variadic in g_variadic_functions_\n", f->name.c_str());
         }
 
-                QuarkType returnQuarkType;
+        QuarkType returnQuarkType;
         if (f->returnType == "int")
             returnQuarkType = QuarkType::Int;
         else if (f->returnType == "float")
@@ -330,7 +332,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             }
         }
 
-                std::string structName = (returnQuarkType == QuarkType::Struct) ? f->returnType : "";
+        std::string structName = (returnQuarkType == QuarkType::Struct) ? f->returnType : "";
         expressionCodeGen_->declareFunctionType(f->name, returnQuarkType, {}, structName);
 
         if (verbose_)
@@ -340,7 +342,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
 
 void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool hasTopLevelStmts)
 {
-    #ifdef _WIN32
+#ifdef _WIN32
     LLVMTypeRef uint32Type = LLVMInt32TypeInContext(llvmCtx_);
     LLVMTypeRef setConsoleOutputCPType = LLVMFunctionType(uint32Type, &uint32Type, 1, 0);
     LLVMValueRef setConsoleOutputCPFn = LLVMAddFunction(module_, "SetConsoleOutputCP", setConsoleOutputCPType);
@@ -353,7 +355,7 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
 
     if (hasUserMain)
     {
-                        return;
+        return;
     }
     else if (hasTopLevelStmts)
     {
@@ -363,7 +365,7 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
         LLVMPositionBuilderAtEnd(builder_, bb);
 
 #ifdef _WIN32
-                LLVMValueRef utf8CodePage = LLVMConstInt(uint32Type, 65001, 0);
+        LLVMValueRef utf8CodePage = LLVMConstInt(uint32Type, 65001, 0);
         LLVMBuildCall2(builder_, setConsoleOutputCPType, setConsoleOutputCPFn, &utf8CodePage, 1, "");
         LLVMBuildCall2(builder_, setConsoleCPType, setConsoleCPFn, &utf8CodePage, 1, "");
 #endif
@@ -390,31 +392,36 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
 
 void CodeGen::generate(ProgramAST *program, const std::string &outFile)
 {
-        if (progress_) {
+    if (progress_)
+    {
         std::string displayPath = outFile;
-        try {
+        try
+        {
             std::filesystem::path absPath = std::filesystem::absolute(outFile);
             std::filesystem::path currentPath = std::filesystem::current_path();
             displayPath = std::filesystem::relative(absPath, currentPath).string();
-        } catch (...) {
-                    }
+        }
+        catch (...)
+        {
+        }
         progress_->start(displayPath);
         progress_->setStage(CompilationProgress::Stage::PARSING);
     }
-    
+
     g_function_map_.clear();
     g_named_values_.clear();
     g_const_values_.clear();
     g_named_types_.clear();
 
-                builtinFunctions_->registerWithGlobalMap(&g_function_map_, &g_function_param_types_, &g_variadic_functions_);
-                if (expressionCodeGen_)
+    builtinFunctions_->registerWithGlobalMap(&g_function_map_, &g_function_param_types_, &g_variadic_functions_);
+    if (expressionCodeGen_)
         builtinFunctions_->registerTypesWithExpressionCodeGen(expressionCodeGen_.get());
 
     if (verbose_)
         printf("[codegen] generating code\n");
 
-        if (progress_) {
+    if (progress_)
+    {
         progress_->setStage(CompilationProgress::Stage::CODE_GENERATION);
         progress_->setProgress(0.1f);
     }
@@ -422,7 +429,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
     if (verbose_)
         printf("[codegen] about to collect functions\n");
 
-        std::vector<StructDefStmt *> allStructDefs;
+    std::vector<StructDefStmt *> allStructDefs;
     for (auto &s : program->stmts)
     {
         if (verbose_)
@@ -430,21 +437,21 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         statementCodeGen_->collectStructDefs(s.get(), allStructDefs);
     }
 
-        if (verbose_)
+    if (verbose_)
         printf("[codegen] processing %zu struct definitions\n", allStructDefs.size());
     for (auto *structDef : allStructDefs)
     {
         statementCodeGen_->processStructDef(structDef);
     }
 
-        std::vector<FunctionAST *> allFunctions;
+    std::vector<FunctionAST *> allFunctions;
     std::vector<ExternFunctionAST *> allExternFunctions;
     std::vector<ExternVarAST *> allExternVariables;
     for (auto &s : program->stmts)
     {
         if (verbose_)
             printf("[codegen] processing statement\n");
-                statementCodeGen_->predeclareExternStructs(s.get());
+        statementCodeGen_->predeclareExternStructs(s.get());
         statementCodeGen_->collectFunctions(s.get(), allFunctions);
         statementCodeGen_->collectExternFunctions(s.get(), allExternFunctions);
         statementCodeGen_->collectExternVariables(s.get(), allExternVariables);
@@ -467,7 +474,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
     if (verbose_)
         printf("[codegen] declared free\n");
 
-        for (auto *externFunc : allExternFunctions)
+    for (auto *externFunc : allExternFunctions)
     {
         statementCodeGen_->declareExternFunction(externFunc);
     }
@@ -487,7 +494,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
     // First pass: Process global variable declarations so they're available to functions
     for (auto &s : program->stmts)
     {
-        if (auto* varDecl = dynamic_cast<VarDeclStmt*>(s.get()))
+        if (auto *varDecl = dynamic_cast<VarDeclStmt *>(s.get()))
         {
             // Generate global variable declarations first
             if (verbose_)
@@ -503,7 +510,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         {
             statementCodeGen_->genStmt(s.get(), putsFn);
         }
-        else if (!dynamic_cast<VarDeclStmt*>(s.get()))
+        else if (!dynamic_cast<VarDeclStmt *>(s.get()))
         {
             // Skip non-function statements (except VarDeclStmt which was already processed)
             // They will be deferred to main generation point.
@@ -515,7 +522,8 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
     if (verbose_)
         printf("[codegen] finished processing all statements\n");
 
-    if (progress_) {
+    if (progress_)
+    {
         progress_->setProgress(0.8f);
     }
 
@@ -528,18 +536,20 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
 
     generateMainFunction(program, hasUserMain, hasTopLevelStmts);
 
-        if (optimize_)
+    if (optimize_)
     {
-        if (progress_) {
+        if (progress_)
+        {
             progress_->setStage(CompilationProgress::Stage::OPTIMIZATION);
         }
-        
+
         if (verbose_)
             printf("[codegen] running optimization passes\n");
         runOptimizationPasses();
     }
 
-        if (progress_) {
+    if (progress_)
+    {
         progress_->setStage(CompilationProgress::Stage::LINKING);
         progress_->setProgress(0.1f);
     }
@@ -561,15 +571,17 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
 
     if (!emitExecutable(outFile))
     {
-        if (progress_) {
+        if (progress_)
+        {
             progress_->setError("Failed to emit executable");
             progress_->stop();
         }
-                throw EnhancedCodeGenError("failed to emit executable", {/*line*/ 1, /*column*/ 1, /*file*/ "<linker>"}, "", ErrorCodes::CODEGEN_FAILED, 1);
+        throw EnhancedCodeGenError("failed to emit executable", {/*line*/ 1, /*column*/ 1, /*file*/ "<linker>"}, "", ErrorCodes::CODEGEN_FAILED, 1);
     }
-    
+
     // Complete
-    if (progress_) {
+    if (progress_)
+    {
         progress_->setStage(CompilationProgress::Stage::COMPLETE);
         progress_->setProgress(1.0f);
         progress_->stop();
@@ -578,7 +590,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
 
 bool CodeGen::emitExecutable(const std::string &outPath)
 {
-        LLVMInitializeNativeTarget();
+    LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
     LLVMInitializeNativeAsmParser();
 
@@ -594,11 +606,12 @@ bool CodeGen::emitExecutable(const std::string &outPath)
     if (verbose_)
         printf("[codegen] Module verification passed\n");
 
-    if (progress_) {
+    if (progress_)
+    {
         progress_->setProgress(0.3f);
     }
 
-        char *triple = LLVMGetDefaultTargetTriple();
+    char *triple = LLVMGetDefaultTargetTriple();
     LLVMTargetRef target;
     char *tmErr = nullptr;
     if (LLVMGetTargetFromTriple(triple, &target, &tmErr) != 0)
@@ -622,10 +635,11 @@ bool CodeGen::emitExecutable(const std::string &outPath)
         LLVMDisposeMessage(triple);
         return false;
     }
-        LLVMSetTarget(module_, triple);
+    LLVMSetTarget(module_, triple);
     LLVMDisposeMessage(triple);
 
-    if (progress_) {
+    if (progress_)
+    {
         progress_->setProgress(0.5f);
     }
 
@@ -644,16 +658,17 @@ bool CodeGen::emitExecutable(const std::string &outPath)
         printf("[codegen] Emitted object to memory buffer (%zu bytes)\n", sz);
     }
 
-    if (progress_) {
+    if (progress_)
+    {
         progress_->setProgress(0.7f);
     }
 
-                        bool lldLinked = false;
+    bool lldLinked = false;
     std::string lldErrMsg;
     std::string tmpObjPath;
 
 #ifdef _WIN32
-        try
+    try
     {
         auto tmpDir = std::filesystem::temp_directory_path();
         auto now = std::chrono::high_resolution_clock::now().time_since_epoch().count();
@@ -682,9 +697,9 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 if (verbose_)
                     printf("[codegen] Wrote temp obj: %s\n", tmpObjPath.c_str());
                 std::string outOpt = "/out:" + outPath;
-                                std::string subsystemOpt = "/subsystem:console";
+                std::string subsystemOpt = "/subsystem:console";
 
-                                                std::vector<std::string> argstrs;
+                std::vector<std::string> argstrs;
                 argstrs.emplace_back("lld-link");
                 argstrs.emplace_back("/nologo");
                 argstrs.push_back(outOpt);
@@ -693,7 +708,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
 
                 if (!freestanding_)
                 {
-                                                            const char *libEnv = std::getenv("LIB");
+                    const char *libEnv = std::getenv("LIB");
                     if (libEnv && libEnv[0] != '\0')
                     {
                         std::string libPaths(libEnv);
@@ -712,17 +727,21 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                         }
                     }
 
-                                        argstrs.emplace_back("/LIBPATH:C:\\Home\\Data\\vcpkg\\installed\\x64-windows-static-release\\lib");
+                    argstrs.emplace_back("/LIBPATH:C:\\Home\\Data\\vcpkg\\installed\\x64-windows-static-release\\lib");
 
-                                        argstrs.emplace_back("libcmt.lib");                                       argstrs.emplace_back("libvcruntime.lib");                                 argstrs.emplace_back("libucrt.lib");                                      argstrs.emplace_back("legacy_stdio_definitions.lib"); // For printf, scanf, etc.
+                    argstrs.emplace_back("libcmt.lib");
+                    argstrs.emplace_back("libvcruntime.lib");
+                    argstrs.emplace_back("libucrt.lib");
+                    argstrs.emplace_back("legacy_stdio_definitions.lib"); // For printf, scanf, etc.
                     argstrs.emplace_back("libcurl.lib");
                     // Static libcurl dependencies
                     argstrs.emplace_back("zlib.lib");
                     argstrs.emplace_back("zstd.lib");
-                                        argstrs.emplace_back("ixwebsocket.lib");
-                    argstrs.emplace_back("mbedtls.lib");    // mbedTLS for IXWebSocket SSL
-                    argstrs.emplace_back("mbedx509.lib");                       argstrs.emplace_back("mbedcrypto.lib"); // mbedTLS crypto functions
-                                        argstrs.emplace_back("kernel32.lib");
+                    argstrs.emplace_back("ixwebsocket.lib");
+                    argstrs.emplace_back("mbedtls.lib"); // mbedTLS for IXWebSocket SSL
+                    argstrs.emplace_back("mbedx509.lib");
+                    argstrs.emplace_back("mbedcrypto.lib"); // mbedTLS crypto functions
+                    argstrs.emplace_back("kernel32.lib");
                     argstrs.emplace_back("user32.lib");
                     argstrs.emplace_back("gdi32.lib");
                     argstrs.emplace_back("winspool.lib");
@@ -733,26 +752,27 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                     argstrs.emplace_back("comdlg32.lib");
                     argstrs.emplace_back("advapi32.lib");
                     argstrs.emplace_back("ws2_32.lib");
-                                        argstrs.emplace_back("crypt32.lib");
-                    argstrs.emplace_back("bcrypt.lib");                     argstrs.emplace_back("iphlpapi.lib");
+                    argstrs.emplace_back("crypt32.lib");
+                    argstrs.emplace_back("bcrypt.lib");
+                    argstrs.emplace_back("iphlpapi.lib");
                     argstrs.emplace_back("secur32.lib");
                     argstrs.emplace_back("normaliz.lib");
-                                        argstrs.emplace_back("winhttp.lib");
-                                        argstrs.emplace_back("userenv.lib"); // For GetUserProfileDirectoryW
-                    argstrs.emplace_back("dbghelp.lib");                     argstrs.emplace_back("psapi.lib");   
-                                        argstrs.emplace_back("/libpath:build/Release");
+                    argstrs.emplace_back("winhttp.lib");
+                    argstrs.emplace_back("userenv.lib"); // For GetUserProfileDirectoryW
+                    argstrs.emplace_back("dbghelp.lib");
+                    argstrs.emplace_back("psapi.lib");
+                    argstrs.emplace_back("/libpath:build/Release");
 
-                                        argstrs.emplace_back("quark_http.lib");
+                    argstrs.emplace_back("quark_http.lib");
                     argstrs.emplace_back("quark_json.lib");
                     argstrs.emplace_back("quark_toml.lib");
                     argstrs.emplace_back("quark_ws.lib");
                     argstrs.emplace_back("quark_io.lib");
-                    argstrs.emplace_back("quark_map.lib");
                     argstrs.emplace_back("quark_runtime.lib");
-                                    }
+                }
                 else
                 {
-                                        // and avoid default libraries.
+                    // and avoid default libraries.
                     argstrs.emplace_back("/ENTRY:main");
                     argstrs.emplace_back("/NODEFAULTLIB");
                 }
@@ -831,7 +851,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 argstrs.emplace_back("ld64.lld");
                 if (freestanding_)
                 {
-                                                            argstrs.emplace_back("-nostdlib");
+                    argstrs.emplace_back("-nostdlib");
                     argstrs.emplace_back("-e");
                     argstrs.emplace_back("main");
                 }
@@ -857,7 +877,6 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 argstrs.emplace_back("build/libquark_toml.a");
                 argstrs.emplace_back("build/libquark_ws.a");
                 argstrs.emplace_back("build/libquark_io.a");
-                argstrs.emplace_back("build/libquark_map.a");
                 argstrs.emplace_back("build/libquark_runtime.a");
                 argstrs.emplace_back("-lixwebsocket");
                 argstrs.emplace_back("-lcurl");
@@ -979,7 +998,6 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 argstrs.emplace_back(tmpObjPath);
                 argstrs.emplace_back("build/libquark_io.a");
                 argstrs.emplace_back("build/libquark_toml.a");
-                argstrs.emplace_back("build/libquark_map.a");
                 argstrs.emplace_back("build/libquark_runtime.a");
                 argstrs.emplace_back("-lc");
                 argstrs.emplace_back("-lm");
@@ -1033,7 +1051,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
     }
 #endif
 
-        LLVMDisposeMemoryBuffer(objBuf);
+    LLVMDisposeMemoryBuffer(objBuf);
     LLVMDisposeTargetMachine(tm);
 
     if (lldLinked)
@@ -1042,7 +1060,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
             printf("[codegen] Linked executable via LLD: %s\n", outPath.c_str());
         return true;
     }
-        if (!lldErrMsg.empty())
+    if (!lldErrMsg.empty())
     {
         throw EnhancedCodeGenError(std::string("linker failed: ") + lldErrMsg, {/*line*/ 1, /*col*/ 1, /*file*/ outPath}, "", ErrorCodes::SYMBOL_NOT_FOUND, 1);
     }
@@ -1054,10 +1072,10 @@ void CodeGen::runOptimizationPasses()
     if (verbose_)
         printf("[codegen] setting up modern LLVM optimization passes (level O%d)\n", optimizationLevel_);
 
-        llvm::LLVMContext *cppCtx = llvm::unwrap(llvmCtx_);
+    llvm::LLVMContext *cppCtx = llvm::unwrap(llvmCtx_);
     llvm::Module *cppModule = llvm::unwrap(module_);
 
-            if (cppModule->getTargetTriple().empty())
+    if (cppModule->getTargetTriple().empty())
     {
         char *cTriple = LLVMGetDefaultTargetTriple();
         if (cTriple)
@@ -1067,20 +1085,20 @@ void CodeGen::runOptimizationPasses()
         }
     }
 
-        llvm::LoopAnalysisManager LAM;
+    llvm::LoopAnalysisManager LAM;
     llvm::FunctionAnalysisManager FAM;
     llvm::CGSCCAnalysisManager CGAM;
     llvm::ModuleAnalysisManager MAM;
 
-        llvm::PassBuilder PB;
+    llvm::PassBuilder PB;
 
-        PB.registerModuleAnalyses(MAM);
+    PB.registerModuleAnalyses(MAM);
     PB.registerCGSCCAnalyses(CGAM);
     PB.registerFunctionAnalyses(FAM);
     PB.registerLoopAnalyses(LAM);
     PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-        llvm::OptimizationLevel optLevel;
+    llvm::OptimizationLevel optLevel;
     switch (optimizationLevel_)
     {
     case 0:
@@ -1100,39 +1118,39 @@ void CodeGen::runOptimizationPasses()
         break;
     }
 
-        if (verbose_)
+    if (verbose_)
         printf("[codegen] building optimization pipeline (O%d level)\n", optimizationLevel_);
 
     llvm::ModulePassManager MPM;
 
-            if (verbose_)
+    if (verbose_)
         printf("[codegen] internalizing non-exported symbols\n");
     MPM.addPass(llvm::InternalizePass([&](const llvm::GlobalValue &GV)
                                       {
         if (GV.isDeclaration()) return true;         return GV.getName() == "main"; }));
 
-        llvm::ModulePassManager DefaultMPM = PB.buildPerModuleDefaultPipeline(optLevel);
+    llvm::ModulePassManager DefaultMPM = PB.buildPerModuleDefaultPipeline(optLevel);
 
     // Add the default passes
     MPM.addPass(std::move(DefaultMPM));
 
-        if (optimizationLevel_ > 0)
+    if (optimizationLevel_ > 0)
     {
         if (verbose_)
             printf("[codegen] adding explicit dead code elimination passes\n");
 
-                MPM.addPass(llvm::GlobalDCEPass());
+        MPM.addPass(llvm::GlobalDCEPass());
 
-                MPM.addPass(llvm::DeadArgumentEliminationPass());
+        MPM.addPass(llvm::DeadArgumentEliminationPass());
 
-                MPM.addPass(llvm::StripDeadPrototypesPass());
+        MPM.addPass(llvm::StripDeadPrototypesPass());
 
-                        MPM.addPass(llvm::GlobalOptPass());
+        MPM.addPass(llvm::GlobalOptPass());
 
-                llvm::FunctionPassManager FPM;
-        FPM.addPass(llvm::DCEPass());  // Basic dead code elimination
-        FPM.addPass(llvm::ADCEPass()); 
-                MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
+        llvm::FunctionPassManager FPM;
+        FPM.addPass(llvm::DCEPass()); // Basic dead code elimination
+        FPM.addPass(llvm::ADCEPass());
+        MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
 
         // Final global cleanup pass
         MPM.addPass(llvm::GlobalDCEPass());
@@ -1150,86 +1168,93 @@ void CodeGen::runOptimizationPasses()
 
 std::vector<uint8_t> CodeGen::emitBitcode()
 {
-    if (!module_) {
+    if (!module_)
+    {
         return {};
     }
-    
+
     LLVMMemoryBufferRef memBuf = LLVMWriteBitcodeToMemoryBuffer(module_);
-    if (!memBuf) {
+    if (!memBuf)
+    {
         if (verbose_)
             printf("[codegen] failed to write bitcode to memory buffer\n");
         return {};
     }
-    
-    const char* data = LLVMGetBufferStart(memBuf);
+
+    const char *data = LLVMGetBufferStart(memBuf);
     size_t size = LLVMGetBufferSize(memBuf);
-    
+
     std::vector<uint8_t> result(data, data + size);
     LLVMDisposeMemoryBuffer(memBuf);
-    
+
     if (verbose_)
         printf("[codegen] emitted %zu bytes of bitcode\n", result.size());
-    
+
     return result;
 }
 
-bool CodeGen::loadBitcode(const std::vector<uint8_t>& bitcode)
+bool CodeGen::loadBitcode(const std::vector<uint8_t> &bitcode)
 {
-    if (bitcode.empty()) {
+    if (bitcode.empty())
+    {
         return false;
     }
-    
+
     LLVMMemoryBufferRef memBuf = LLVMCreateMemoryBufferWithMemoryRangeCopy(
-        reinterpret_cast<const char*>(bitcode.data()),
+        reinterpret_cast<const char *>(bitcode.data()),
         bitcode.size(),
-        "cached_module"
-    );
-    
-    if (!memBuf) {
+        "cached_module");
+
+    if (!memBuf)
+    {
         if (verbose_)
             printf("[codegen] failed to create memory buffer from bitcode\n");
         return false;
     }
-    
+
     LLVMModuleRef loadedModule = nullptr;
-    char* errorMsg = nullptr;
-    
-    if (LLVMParseBitcodeInContext2(llvmCtx_, memBuf, &loadedModule) != 0) {
+    char *errorMsg = nullptr;
+
+    if (LLVMParseBitcodeInContext2(llvmCtx_, memBuf, &loadedModule) != 0)
+    {
         if (verbose_)
             printf("[codegen] failed to parse bitcode: %s\n", errorMsg ? errorMsg : "unknown error");
         LLVMDisposeMessage(errorMsg);
         return false;
     }
-    
-    if (module_) {
+
+    if (module_)
+    {
         LLVMDisposeModule(module_);
     }
     module_ = loadedModule;
-    
+
     if (verbose_)
         printf("[codegen] loaded module from bitcode\n");
-    
+
     return true;
 }
 
-bool CodeGen::loadBitcodeFromFile(const std::string& path)
+bool CodeGen::loadBitcodeFromFile(const std::string &path)
 {
     std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) {
+    if (!file)
+    {
         if (verbose_)
             printf("[codegen] failed to open bitcode file: %s\n", path.c_str());
         return false;
     }
-    
+
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
-    
+
     std::vector<uint8_t> bitcode(size);
-    if (!file.read(reinterpret_cast<char*>(bitcode.data()), size)) {
+    if (!file.read(reinterpret_cast<char *>(bitcode.data()), size))
+    {
         if (verbose_)
             printf("[codegen] failed to read bitcode file: %s\n", path.c_str());
         return false;
     }
-    
+
     return loadBitcode(bitcode);
 }

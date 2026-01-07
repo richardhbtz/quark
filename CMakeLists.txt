@@ -146,11 +146,6 @@ add_library(quark_io STATIC
 )
 target_include_directories(quark_io PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lib/io)
 
-# Map runtime library (string-keyed dictionary) - Legacy, kept for compatibility
-add_library(quark_map STATIC
-    lib/map/quark_map.cpp
-)
-
 # Native runtime library (built-in map and list types)
 add_library(quark_runtime STATIC
     lib/runtime/quark_runtime.cpp
@@ -245,7 +240,6 @@ target_link_libraries(quark_compiler
     ixwebsocket::ixwebsocket
     CURL::libcurl
     quark_io
-    quark_map
     ftxui::screen
     ftxui::dom
     ftxui::component
@@ -273,7 +267,7 @@ target_link_libraries(quark PRIVATE quark_compiler)
 if(WIN32)
     target_link_options(quark PRIVATE /SUBSYSTEM:CONSOLE /NODEFAULTLIB:msvcrt.lib)
 endif()
-add_dependencies(quark quark_http quark_json quark_ws quark_toml quark_map quark_runtime)
+add_dependencies(quark quark_http quark_json quark_ws quark_toml quark_runtime)
 
 # Copy the runtime static library next to the compiler binary for LLD to consume
 add_custom_command(TARGET quark POST_BUILD
@@ -291,12 +285,6 @@ add_custom_command(TARGET quark POST_BUILD
 add_custom_command(TARGET quark POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
     $<TARGET_FILE:quark_ws>
-    $<TARGET_FILE_DIR:quark>
-)
-
-add_custom_command(TARGET quark POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-    $<TARGET_FILE:quark_map>
     $<TARGET_FILE_DIR:quark>
 )
 

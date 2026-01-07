@@ -70,14 +70,14 @@ print("{}", arr.length());
 var slice = arr.slice(0, 2, 1);
 
 // Maps (dictionaries/hashmaps)
-var m = map_new();
+map m;
 m.set("key", "value");
 var val = m.get("key");
-if (m.has("key")) { /* ... */ }
+if (m.contains("key")) { /* ... */ }
 m.free();
 
 // Map literal syntax
-var m2 = ["name": "Alice", "age": "30"];
+map m2 = { "name": "Alice", "age": "30" };
 
 // Pointers
 int* ptr = &x;
@@ -167,7 +167,7 @@ lto = true
 | `quark_ws` | WebSocket support via IXWebSocket |
 | `quark_toml` | TOML configuration parsing |
 | `quark_io` | File and console helpers |
-| `quark_map` | String-keyed maps (dictionaries/hashmaps) |
+| `quark_runtime` | Native runtime (built-in list/map types) |
 
 ## � Examples
 
