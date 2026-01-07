@@ -794,6 +794,13 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 for (auto &s : argstrs)
                     args.push_back(s.c_str());
 
+                if (verbose_)
+                {
+                    printf("[codegen] Linker command:\n");
+                    for (const auto &arg : argstrs)
+                        printf("  %s\n", arg.c_str());
+                }
+
                 llvm::SmallString<0> outBuf, errBuf;
                 llvm::raw_svector_ostream outOS(outBuf), errOS(errBuf);
                 llvm::ArrayRef<const char *> argv(args.data(), args.size());
@@ -1062,6 +1069,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
     }
     if (!lldErrMsg.empty())
     {
+        g_cli.error("LLD link error: " + lldErrMsg);
         throw EnhancedCodeGenError(std::string("linker failed: ") + lldErrMsg, {/*line*/ 1, /*col*/ 1, /*file*/ outPath}, "", ErrorCodes::SYMBOL_NOT_FOUND, 1);
     }
     return false;

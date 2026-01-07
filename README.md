@@ -139,10 +139,19 @@ quark package build --release
 [package]
 name = "my_project"
 version = "0.1.0"
+description = "A Quark project"
+license = "MIT"
+authors = ["Your Name <you@example.com>"]
+repository = "https://github.com/user/my_project"
 
 [build]
 target = "executable"
 source_files = [ "src/main.k" ]
+library_paths = [ "lib/" ]         # Directories to search for native libraries
+link_libraries = [ "mylib" ]       # Native libraries to link (e.g., links mylib)
+
+[dependencies]
+some-module = { git = "https://github.com/user/some-module" }
 
 [profile.release.optimization]
 enabled = true

@@ -2,13 +2,13 @@
 emit_assembly = false
 emit_llvm = false
 freestanding = false
+library_paths = []
+link_libraries = []
 output_name = 'package'
 source_files = [ 'src/main.k' ]
 target = 'executable'
 
 [dependencies]
-
-[dev-dependencies]
 
 [package]
 description = 'A Quark project'

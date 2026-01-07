@@ -432,6 +432,9 @@ namespace
 		package.insert_or_assign("version", std::string("0.1.0"));
 		package.insert_or_assign("description", std::string("A Quark project"));
 		package.insert_or_assign("license", std::string("MIT"));
+		package.insert_or_assign("authors", toml::array{});
+		package.insert_or_assign("repository", std::string(""));
+		package.insert_or_assign("homepage", std::string(""));
 		doc.insert_or_assign("package", package);
 
 		toml::table build;
@@ -445,10 +448,12 @@ namespace
 		sourceFiles.push_back(std::string("src/main.k"));
 		build.insert_or_assign("source_files", sourceFiles);
 
+		build.insert_or_assign("library_paths", toml::array{});
+		build.insert_or_assign("link_libraries", toml::array{});
+
 		doc.insert_or_assign("build", build);
 
 		doc.insert_or_assign("dependencies", toml::table{});
-		doc.insert_or_assign("dev-dependencies", toml::table{});
 
 		toml::table profile;
 
@@ -515,7 +520,10 @@ namespace
 
 	static BuildResult perform_build(ManifestContext &manifest,
 									 const Path &exeDir,
-									 const std::string &profileName)
+										 const std::string &profileName,
+										 bool useCache,
+										 bool clearCache,
+										 const std::string &cacheDir)
 	{
 		BuildResult result;
 
@@ -581,6 +589,10 @@ namespace
 		options.emit_asm = build.emitAssembly ? 1 : 0;
 		options.verbosity = static_cast<int>(QUARK_VERBOSITY_NORMAL);
 		options.color_output = g_cli.isColorEnabled() ? 1 : 0;
+		options.use_cache = useCache ? 1 : 0;
+		options.clear_cache = clearCache ? 1 : 0;
+		if (!cacheDir.empty())
+			options.cache_dir = cacheDir.c_str();
 
 		std::vector<std::string> libraryPaths;
 		if (!exeDir.empty())
@@ -646,14 +658,13 @@ namespace
 		return result;
 	}
 
-	static bool handle_add_dependency(ManifestContext &manifest, const std::string &name, const std::string &version, bool dev)
+	static bool handle_add_dependency(ManifestContext &manifest, const std::string &name, const std::string &version)
 	{
-		std::string key = dev ? "dev-dependencies" : "dependencies";
-		toml::table &deps = ensure_table(manifest.document, key);
+		toml::table &deps = ensure_table(manifest.document, "dependencies");
 		deps.insert_or_assign(name, version);
 		if (!manifest.save())
 			return false;
-		g_cli.success("Added " + name + " = \"" + version + "\" to " + key);
+		g_cli.success("Added " + name + " = \"" + version + "\" to dependencies");
 		return true;
 	}
 
@@ -801,47 +812,35 @@ namespace
 		return true;
 	}
 
-	static bool handle_remove_dependency(ManifestContext &manifest, const std::string &name, bool dev)
+	static bool handle_remove_dependency(ManifestContext &manifest, const std::string &name)
 	{
-		std::string key = dev ? "dev-dependencies" : "dependencies";
-		if (toml::table *deps = get_table(manifest.document, key))
+		if (toml::table *deps = get_table(manifest.document, "dependencies"))
 		{
 			if (deps->erase(name))
 			{
 				if (!manifest.save())
 					return false;
-				g_cli.success("Removed " + name + " from " + key);
+				g_cli.success("Removed " + name + " from dependencies");
 				return true;
 			}
 		}
-		g_cli.warning("No dependency named '" + name + "' found in " + key);
+		g_cli.warning("No dependency named '" + name + "' found in dependencies");
 		return false;
 	}
 
 	static void print_dependency_list(const ManifestContext &manifest)
 	{
 		auto deps = collect_dependencies(manifest.document, "dependencies");
-		auto devDeps = collect_dependencies(manifest.document, "dev-dependencies");
 
-		if (deps.empty() && devDeps.empty())
+		if (deps.empty())
 		{
 			g_cli.info("No dependencies declared");
 			return;
 		}
 
-		if (!deps.empty())
-		{
-			g_cli.println("Dependencies:", MessageType::INFO);
-			for (const auto &[name, version] : deps)
-				g_cli.println("  " + name + " = " + version, MessageType::INFO);
-		}
-
-		if (!devDeps.empty())
-		{
-			g_cli.println("Dev dependencies:", MessageType::INFO);
-			for (const auto &[name, version] : devDeps)
-				g_cli.println("  " + name + " = " + version, MessageType::INFO);
-		}
+		g_cli.println("Dependencies:", MessageType::INFO);
+		for (const auto &[name, version] : deps)
+			g_cli.println("  " + name + " = " + version, MessageType::INFO);
 	}
 
 	static void print_help()
@@ -1032,12 +1031,32 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 	if (loweredCommand == "build")
 	{
 		std::string profile = "dev";
+		bool useCache = true;
+		bool clearCache = false;
+		std::string cacheDir;
 		for (size_t i = 0; i < commandArgs.size(); ++i)
 		{
 			std::string_view arg = commandArgs[i];
 			if (arg == "--release")
 			{
 				profile = "release";
+			}
+			else if (arg == "--no-cache")
+			{
+				useCache = false;
+			}
+			else if (arg == "--clear-cache")
+			{
+				clearCache = true;
+			}
+			else if (arg == "--cache-dir")
+			{
+				if (i + 1 >= commandArgs.size())
+				{
+					g_cli.error("--cache-dir requires a path");
+					return 1;
+				}
+				cacheDir = commandArgs[++i];
 			}
 			else if (arg == "--profile")
 			{
@@ -1060,19 +1079,39 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 			}
 		}
 
-		BuildResult result = perform_build(manifest, exeDir, profile);
+		BuildResult result = perform_build(manifest, exeDir, profile, useCache, clearCache, cacheDir);
 		return result.exitCode;
 	}
 
 	if (loweredCommand == "run")
 	{
 		std::string profile = "dev";
+		bool useCache = true;
+		bool clearCache = false;
+		std::string cacheDir;
 		for (size_t i = 0; i < commandArgs.size(); ++i)
 		{
 			std::string_view arg = commandArgs[i];
 			if (arg == "--release")
 			{
 				profile = "release";
+			}
+			else if (arg == "--no-cache")
+			{
+				useCache = false;
+			}
+			else if (arg == "--clear-cache")
+			{
+				clearCache = true;
+			}
+			else if (arg == "--cache-dir")
+			{
+				if (i + 1 >= commandArgs.size())
+				{
+					g_cli.error("--cache-dir requires a path");
+					return 1;
+				}
+				cacheDir = commandArgs[++i];
 			}
 			else if (arg == "--profile")
 			{
@@ -1095,7 +1134,7 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 			}
 		}
 
-		BuildResult result = perform_build(manifest, exeDir, profile);
+		BuildResult result = perform_build(manifest, exeDir, profile, useCache, clearCache, cacheDir);
 		if (result.exitCode != 0)
 			return result.exitCode;
 
@@ -1123,18 +1162,13 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 
 	if (loweredCommand == "add")
 	{
-		bool dev = false;
 		std::string customName;
 		std::vector<std::string> args;
 
 		for (size_t i = 0; i < commandArgs.size(); ++i)
 		{
 			std::string_view arg = commandArgs[i];
-			if (arg == "--dev")
-			{
-				dev = true;
-			}
-			else if (arg == "--as")
+			if (arg == "--as")
 			{
 				if (i + 1 >= commandArgs.size())
 				{
@@ -1176,7 +1210,7 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 		else if (args.size() == 2)
 		{
 			// Legacy: quark add <name> <version>
-			return handle_add_dependency(manifest, args[0], args[1], dev) ? 0 : 1;
+			return handle_add_dependency(manifest, args[0], args[1]) ? 0 : 1;
 		}
 		else
 		{
@@ -1187,14 +1221,11 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 
 	if (loweredCommand == "remove" || loweredCommand == "rm")
 	{
-		bool dev = false;
 		std::vector<std::string> args;
 		for (size_t i = 0; i < commandArgs.size(); ++i)
 		{
 			std::string_view arg = commandArgs[i];
-			if (arg == "--dev")
-				dev = true;
-			else if (!arg.empty() && arg[0] == '-')
+			if (!arg.empty() && arg[0] == '-')
 			{
 				g_cli.error("Unknown option for remove: " + std::string(arg));
 				return 1;
@@ -1205,11 +1236,11 @@ int run_package_manager_cli(int argc, char **argv, const std::filesystem::path &
 
 		if (args.size() != 1)
 		{
-			g_cli.error("Usage: quark package remove [--dev] <name>");
+			g_cli.error("Usage: quark package remove <name>");
 			return 1;
 		}
 
-		return handle_remove_dependency(manifest, args[0], dev) ? 0 : 1;
+		return handle_remove_dependency(manifest, args[0]) ? 0 : 1;
 	}
 
 	if (loweredCommand == "list")
