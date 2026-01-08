@@ -1136,7 +1136,13 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     if (cur_.kind == tok_ret)
     {
         next();
-        auto returnValue = parseExpression();
+        
+        // Check if this is a void return (ret; with no expression)
+        std::unique_ptr<ExprAST> returnValue = nullptr;
+        if (cur_.kind != tok_semicolon)
+        {
+            returnValue = parseExpression();
+        }
 
         if (cur_.kind != tok_semicolon)
         {

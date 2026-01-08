@@ -216,14 +216,39 @@ namespace
             compilerPath = additionalLibraryPaths[0];
         }
 
-        // Get project path from input file
+        // Get project path by searching for Quark.toml
         std::filesystem::path inputPath(logicalName);
         std::error_code ec;
+        std::filesystem::path searchPath;
+        
         if (inputPath.has_parent_path())
         {
-            projectPath = std::filesystem::absolute(inputPath.parent_path(), ec);
+            searchPath = std::filesystem::absolute(inputPath.parent_path(), ec);
         }
         else
+        {
+            searchPath = std::filesystem::current_path(ec);
+        }
+
+        // Search upwards for Quark.toml to find project root
+        projectPath = searchPath;
+        std::filesystem::path current = searchPath;
+        bool foundProjectRoot = false;
+        
+        while (current.has_parent_path() && current != current.parent_path())
+        {
+            std::filesystem::path manifestPath = current / "Quark.toml";
+            if (std::filesystem::exists(manifestPath, ec))
+            {
+                projectPath = current;
+                foundProjectRoot = true;
+                break;
+            }
+            current = current.parent_path();
+        }
+        
+        // If no Quark.toml found, use current working directory
+        if (!foundProjectRoot)
         {
             projectPath = std::filesystem::current_path(ec);
         }
