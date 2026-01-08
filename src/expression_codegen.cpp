@@ -2416,7 +2416,9 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             bool isVoidFunction = (builtin && LLVMGetTypeKind(builtin->returnType) == LLVMVoidTypeKind);
 
             LLVMValueRef result = builtinFunctions_->generateBuiltinCall(c->callee, args);
-            if (result || isVoidFunction)
+            // Always return for builtins, even if result is null (for void functions)
+            // or a falsy LLVM value (like i1 false/0)
+            if (isVoidFunction || result != nullptr)
             {
                 return result;
             }
@@ -3679,6 +3681,34 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
 
     if (auto *c = dynamic_cast<CallExprAST *>(expr))
     {
+        // Check if it's a builtin function first
+        if (builtinFunctions_ && builtinFunctions_->isBuiltin(c->callee))
+        {
+            std::vector<LLVMValueRef> args;
+            for (const auto &arg : c->args)
+            {
+                args.push_back(genExpr(arg.get()));
+            }
+
+            const BuiltinFunction *builtin = builtinFunctions_->getBuiltin(c->callee);
+            bool isVoidFunction = (builtin && LLVMGetTypeKind(builtin->returnType) == LLVMVoidTypeKind);
+
+            LLVMValueRef result = builtinFunctions_->generateBuiltinCall(c->callee, args);
+            if (isVoidFunction || result != nullptr)
+            {
+                // For non-boolean return types, convert to bool
+                if (builtin && builtin->returnType != bool_t_)
+                {
+                    if (LLVMGetTypeKind(builtin->returnType) == LLVMIntegerTypeKind)
+                    {
+                        LLVMValueRef zero = LLVMConstInt(builtin->returnType, 0, 0);
+                        return LLVMBuildICmp(builder_, LLVMIntNE, result, zero, "to_bool");
+                    }
+                }
+                return result;
+            }
+        }
+        
         auto it = functionTypes_.find(c->callee);
         if (it != functionTypes_.end() && it->second.type == QuarkType::Boolean)
         {

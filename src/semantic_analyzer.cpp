@@ -102,7 +102,14 @@ void SemanticAnalyzer::registerBuiltinFunctions()
     addBuiltin("format", "str", {}, true);
     addBuiltin("to_string", "str", {}, true);
     addBuiltin("to_int", "int", {}, true);
+    
+    // Convenient aliases for common functions
+    addBuiltin("parse_int", "int", {}, true);     // alias for to_int
+    addBuiltin("parseInt", "int", {}, true);      // JavaScript-style alias
+    addBuiltin("toString", "str", {}, true);      // JavaScript-style alias
+    
     addBuiltin("str_len", "int", {{"s", "str"}}, false);
+    addBuiltin("str_length", "int", {{"s", "str"}}, false);
     addBuiltin("str_slice", "str", {{"s", "str"}, {"start", "int"}, {"end", "int"}}, false);
     addBuiltin("str_concat", "str", {{"a", "str"}, {"b", "str"}}, false);
     addBuiltin("str_find", "int", {{"haystack", "str"}, {"needle", "str"}}, false);

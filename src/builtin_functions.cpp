@@ -114,6 +114,26 @@ void BuiltinFunctions::registerAllBuiltins()
                         // Default 0
                         return LLVMConstInt(int32_t_, 0, 0);
                     });
+    
+    // Convenient aliases
+    registerBuiltin("parse_int", int32_t_, {}, /*isVariadic*/ true,
+                    [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
+                    {
+                        return generateBuiltinCall("to_int", args);
+                    });
+    
+    registerBuiltin("parseInt", int32_t_, {}, /*isVariadic*/ true,
+                    [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
+                    {
+                        return generateBuiltinCall("to_int", args);
+                    });
+    
+    registerBuiltin("toString", int8ptr_t_, {}, /*isVariadic*/ true,
+                    [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
+                    {
+                        return generateBuiltinCall("to_string", args);
+                    });
+    
     registerBuiltin("print", void_t_, {}, /*isVariadic*/ true,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
@@ -581,6 +601,161 @@ void BuiltinFunctions::registerMemoryFunctions()
 
 void BuiltinFunctions::registerMathFunctions()
 {
+    // Helper lambda to declare and call a C math function
+    auto declareMathFunc = [this](const char* name, LLVMTypeRef retType, const std::vector<LLVMTypeRef>& paramTypes) -> LLVMValueRef {
+        LLVMValueRef fn = LLVMGetNamedFunction(module_, name);
+        if (!fn) {
+            LLVMTypeRef fnType = LLVMFunctionType(retType, 
+                paramTypes.empty() ? nullptr : const_cast<LLVMTypeRef*>(paramTypes.data()), 
+                static_cast<unsigned>(paramTypes.size()), 0);
+            fn = LLVMAddFunction(module_, name, fnType);
+        }
+        return fn;
+    };
+    
+    // Trigonometric functions
+    registerBuiltin("sin", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef sinFn = declareMathFunc("sin", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sinFn), sinFn, const_cast<LLVMValueRef*>(&args[0]), 1, "sin_call");
+                    });
+    
+    registerBuiltin("cos", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef cosFn = declareMathFunc("cos", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(cosFn), cosFn, const_cast<LLVMValueRef*>(&args[0]), 1, "cos_call");
+                    });
+    
+    registerBuiltin("tan", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef tanFn = declareMathFunc("tan", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(tanFn), tanFn, const_cast<LLVMValueRef*>(&args[0]), 1, "tan_call");
+                    });
+    
+    registerBuiltin("asin", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef asinFn = declareMathFunc("asin", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(asinFn), asinFn, const_cast<LLVMValueRef*>(&args[0]), 1, "asin_call");
+                    });
+    
+    registerBuiltin("acos", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef acosFn = declareMathFunc("acos", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(acosFn), acosFn, const_cast<LLVMValueRef*>(&args[0]), 1, "acos_call");
+                    });
+    
+    registerBuiltin("atan", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef atanFn = declareMathFunc("atan", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(atanFn), atanFn, const_cast<LLVMValueRef*>(&args[0]), 1, "atan_call");
+                    });
+    
+    registerBuiltin("atan2", double_t_, {double_t_, double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 2) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef atan2Fn = declareMathFunc("atan2", double_t_, {double_t_, double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(atan2Fn), atan2Fn, const_cast<LLVMValueRef*>(args.data()), 2, "atan2_call");
+                    });
+    
+    registerBuiltin("sinh", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef sinhFn = declareMathFunc("sinh", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sinhFn), sinhFn, const_cast<LLVMValueRef*>(&args[0]), 1, "sinh_call");
+                    });
+    
+    registerBuiltin("cosh", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef coshFn = declareMathFunc("cosh", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(coshFn), coshFn, const_cast<LLVMValueRef*>(&args[0]), 1, "cosh_call");
+                    });
+    
+    registerBuiltin("tanh", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef tanhFn = declareMathFunc("tanh", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(tanhFn), tanhFn, const_cast<LLVMValueRef*>(&args[0]), 1, "tanh_call");
+                    });
+    
+    // Basic math operations
+    registerBuiltin("sqrt", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef sqrtFn = declareMathFunc("sqrt", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sqrtFn), sqrtFn, const_cast<LLVMValueRef*>(&args[0]), 1, "sqrt_call");
+                    });
+    
+    registerBuiltin("pow", double_t_, {double_t_, double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 2) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef powFn = declareMathFunc("pow", double_t_, {double_t_, double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(powFn), powFn, const_cast<LLVMValueRef*>(args.data()), 2, "pow_call");
+                    });
+    
+    registerBuiltin("log", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef logFn = declareMathFunc("log", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(logFn), logFn, const_cast<LLVMValueRef*>(&args[0]), 1, "log_call");
+                    });
+    
+    registerBuiltin("log10", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef log10Fn = declareMathFunc("log10", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(log10Fn), log10Fn, const_cast<LLVMValueRef*>(&args[0]), 1, "log10_call");
+                    });
+    
+    registerBuiltin("exp", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef expFn = declareMathFunc("exp", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(expFn), expFn, const_cast<LLVMValueRef*>(&args[0]), 1, "exp_call");
+                    });
+    
+    registerBuiltin("abs", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef fabsFn = declareMathFunc("fabs", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fabsFn), fabsFn, const_cast<LLVMValueRef*>(&args[0]), 1, "fabs_call");
+                    });
+    
+    registerBuiltin("floor", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef floorFn = declareMathFunc("floor", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(floorFn), floorFn, const_cast<LLVMValueRef*>(&args[0]), 1, "floor_call");
+                    });
+    
+    registerBuiltin("ceil", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef ceilFn = declareMathFunc("ceil", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(ceilFn), ceilFn, const_cast<LLVMValueRef*>(&args[0]), 1, "ceil_call");
+                    });
+    
+    registerBuiltin("round", double_t_, {double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef roundFn = declareMathFunc("round", double_t_, {double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(roundFn), roundFn, const_cast<LLVMValueRef*>(&args[0]), 1, "round_call");
+                    });
+    
+    registerBuiltin("fmod", double_t_, {double_t_, double_t_}, false,
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
+                        if (args.size() != 2) return LLVMConstReal(double_t_, 0.0);
+                        LLVMValueRef fmodFn = declareMathFunc("fmod", double_t_, {double_t_, double_t_});
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fmodFn), fmodFn, const_cast<LLVMValueRef*>(args.data()), 2, "fmod_call");
+                    });
+    
+    // Integer/Float specific abs, min, max, clamp functions
     registerBuiltin("abs_i32", int32_t_, {int32_t_}, false,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
                     {

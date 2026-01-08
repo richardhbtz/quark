@@ -122,6 +122,9 @@ file(GLOB_RECURSE HEADERS
 )
 
 list(REMOVE_ITEM SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/quark.cpp")
+# Exclude LSP sources (built separately)
+list(FILTER SOURCES EXCLUDE REGEX ".*/lsp/.*")
+list(FILTER HEADERS EXCLUDE REGEX ".*/lsp/.*")
 
 add_library(quark_compiler STATIC ${SOURCES} ${HEADERS})
 
@@ -268,6 +271,18 @@ if(WIN32)
     target_link_options(quark PRIVATE /SUBSYSTEM:CONSOLE /NODEFAULTLIB:msvcrt.lib)
 endif()
 add_dependencies(quark quark_http quark_json quark_ws quark_toml quark_runtime)
+
+# Quark Language Server Protocol executable
+add_executable(quark-lsp
+    src/lsp/main.cpp
+    src/lsp/lsp_lexer.cpp
+    src/lsp/lsp_parser.cpp
+    src/lsp/lsp_server.cpp
+)
+target_include_directories(quark-lsp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+if(WIN32)
+    target_link_options(quark-lsp PRIVATE /SUBSYSTEM:CONSOLE /NODEFAULTLIB:msvcrt.lib)
+endif()
 
 # Copy the runtime static library next to the compiler binary for LLD to consume
 add_custom_command(TARGET quark POST_BUILD
