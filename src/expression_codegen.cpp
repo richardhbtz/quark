@@ -5688,6 +5688,34 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
 
     if (objType.type == QuarkType::String)
     {
+        std::string extensionName = "str::" + methodCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> args;
+            LLVMValueRef strVal = objectValue;
+            LLVMTypeRef ty = LLVMTypeOf(strVal);
+            if (LLVMGetTypeKind(ty) == LLVMPointerTypeKind)
+            {
+                LLVMTypeRef elem = LLVMGetElementType(ty);
+                if (elem == int8ptr_t_)
+                {
+                    strVal = LLVMBuildLoad2(builder_, int8ptr_t_, strVal, "str.load");
+                }
+            }
+            args.push_back(strVal);
+            for (const auto &arg : methodCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                args.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, args.data(), (unsigned)args.size(), isVoid ? "" : "ext_call");
+        }
+
         std::vector<LLVMValueRef> args;
         LLVMValueRef strVal = objectValue;
         LLVMTypeRef ty = LLVMTypeOf(strVal);
@@ -5701,7 +5729,6 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
         }
         args.push_back(strVal);
 
-        // Add method arguments
         for (const auto &arg : methodCall->args)
         {
             LLVMValueRef argValue = genExpr(arg.get());
@@ -5714,6 +5741,73 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
         if (verbose_)
             printf("[codegen] calling builtin function: %s\n", builtinName.c_str());
         return builtinFunctions_->generateBuiltinCall(builtinName, args);
+    }
+
+    if (objType.type == QuarkType::Int)
+    {
+        std::string extensionName = "int::" + methodCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> args;
+            args.push_back(objectValue);
+            for (const auto &arg : methodCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                args.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, args.data(), (unsigned)args.size(), isVoid ? "" : "ext_call");
+        }
+        throw CodeGenError("Unknown method '" + methodCall->methodName + "' on int type", methodCall->location);
+    }
+
+    if (objType.type == QuarkType::Float || objType.type == QuarkType::Double)
+    {
+        std::string typeName = (objType.type == QuarkType::Float) ? "float" : "double";
+        std::string extensionName = typeName + "::" + methodCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> args;
+            args.push_back(objectValue);
+            for (const auto &arg : methodCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                args.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, args.data(), (unsigned)args.size(), isVoid ? "" : "ext_call");
+        }
+        throw CodeGenError("Unknown method '" + methodCall->methodName + "' on " + typeName + " type", methodCall->location);
+    }
+
+    if (objType.type == QuarkType::Boolean)
+    {
+        std::string extensionName = "bool::" + methodCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> args;
+            args.push_back(objectValue);
+            for (const auto &arg : methodCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                args.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, args.data(), (unsigned)args.size(), isVoid ? "" : "ext_call");
+        }
+        throw CodeGenError("Unknown method '" + methodCall->methodName + "' on bool type", methodCall->location);
     }
 
     throw std::runtime_error("Method calls are currently only supported on string types");
@@ -5834,7 +5928,99 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
             args.push_back(delim);
             return builtinFunctions_->generateBuiltinCall("str_split", args);
         }
+
+        std::string extensionName = "str::" + staticCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> extArgs;
+            extArgs.push_back(objectValue);
+            for (const auto &arg : staticCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                extArgs.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, extArgs.data(), (unsigned)extArgs.size(), isVoid ? "" : "ext_call");
+        }
+
         throw std::runtime_error("Unknown string method: " + staticCall->methodName);
+    }
+
+    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Int)
+    {
+        std::string extensionName = "int::" + staticCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            VariableExprAST varExpr(staticCall->structName);
+            LLVMValueRef objectValue = genExpr(&varExpr);
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> extArgs;
+            extArgs.push_back(objectValue);
+            for (const auto &arg : staticCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                extArgs.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, extArgs.data(), (unsigned)extArgs.size(), isVoid ? "" : "ext_call");
+        }
+        throw CodeGenError("Unknown int method: " + staticCall->methodName, staticCall->location);
+    }
+
+    if (varIt != variableTypes_.end() && (varIt->second.type == QuarkType::Float || varIt->second.type == QuarkType::Double))
+    {
+        std::string typeName = (varIt->second.type == QuarkType::Float) ? "float" : "double";
+        std::string extensionName = typeName + "::" + staticCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            VariableExprAST varExpr(staticCall->structName);
+            LLVMValueRef objectValue = genExpr(&varExpr);
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> extArgs;
+            extArgs.push_back(objectValue);
+            for (const auto &arg : staticCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                extArgs.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, extArgs.data(), (unsigned)extArgs.size(), isVoid ? "" : "ext_call");
+        }
+        throw CodeGenError("Unknown " + typeName + " method: " + staticCall->methodName, staticCall->location);
+    }
+
+    if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Boolean)
+    {
+        std::string extensionName = "bool::" + staticCall->methodName;
+        if (g_function_map_ && g_function_map_->find(extensionName) != g_function_map_->end())
+        {
+            VariableExprAST varExpr(staticCall->structName);
+            LLVMValueRef objectValue = genExpr(&varExpr);
+            LLVMValueRef function = (*g_function_map_)[extensionName];
+            std::vector<LLVMValueRef> extArgs;
+            extArgs.push_back(objectValue);
+            for (const auto &arg : staticCall->args)
+            {
+                LLVMValueRef argValue = genExpr(arg.get());
+                if (!argValue)
+                    throw std::runtime_error("Failed to generate extension method call argument");
+                extArgs.push_back(argValue);
+            }
+            LLVMTypeRef fnType = LLVMGlobalGetValueType(function);
+            bool isVoid = LLVMGetTypeKind(LLVMGetReturnType(fnType)) == LLVMVoidTypeKind;
+            return LLVMBuildCall2(builder_, fnType, function, extArgs.data(), (unsigned)extArgs.size(), isVoid ? "" : "ext_call");
+        }
+        throw CodeGenError("Unknown bool method: " + staticCall->methodName, staticCall->location);
     }
 
     if (varIt != variableTypes_.end() && varIt->second.type == QuarkType::Map)

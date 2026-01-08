@@ -236,36 +236,43 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
     if (!g_function_map_)
         throw std::runtime_error("global symbol tables not initialized");
 
-    if (verbose_)
-        printf("[codegen] generating body for function: %s with %zu body statements\n", f->name.c_str(), f->body.size());
+    std::string funcName = f->name;
+    if (f->isExtension)
+    {
+        funcName = f->extensionType + "::" + f->name;
+    }
 
-    auto it = g_function_map_->find(f->name);
+    if (verbose_)
+        printf("[codegen] generating body for function: %s with %zu body statements\n", funcName.c_str(), f->body.size());
+
+    auto it = g_function_map_->find(funcName);
     if (it == g_function_map_->end())
     {
         if (verbose_)
-            printf("[codegen] function '%s' not found in function map\n", f->name.c_str());
-        throw std::runtime_error("function '" + f->name + "' not declared");
+            printf("[codegen] function '%s' not found in function map\n", funcName.c_str());
+        throw std::runtime_error("function '" + funcName + "' not declared");
     }
 
     LLVMValueRef fn = it->second;
     if (LLVMCountBasicBlocks(fn) > 0)
     {
         if (verbose_)
-            printf("[codegen] function '%s' already has a body; skipping generation\n", f->name.c_str());
+            printf("[codegen] function '%s' already has a body; skipping generation\n", funcName.c_str());
         return;
     }
 
-    currentFunctionName_ = f->name;
+    currentFunctionName_ = funcName;
     currentFunctionReturnType_ = f->returnType;
 
     std::string structName = "";
     bool isStructMethod = false;
     bool isConstructor = false;
-    size_t colonPos = f->name.find("::");
-    if (colonPos != std::string::npos)
+    bool isExtensionMethod = f->isExtension;
+    size_t colonPos = funcName.find("::");
+    if (colonPos != std::string::npos && !isExtensionMethod)
     {
-        structName = f->name.substr(0, colonPos);
-        std::string methodName = f->name.substr(colonPos + 2);
+        structName = funcName.substr(0, colonPos);
+        std::string methodName = funcName.substr(colonPos + 2);
         isStructMethod = true;
         isConstructor = (methodName == "new" && f->returnType == structName);
         if (verbose_)
@@ -277,7 +284,7 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
 
     LLVMBasicBlockRef savedInsertBB = LLVMGetInsertBlock(builder_);
     if (verbose_)
-        printf("[codegen] creating basic block for %s\n", f->name.c_str());
+        printf("[codegen] creating basic block for %s\n", funcName.c_str());
     LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(ctx_, fn, "entry");
     LLVMPositionBuilderAtEnd(builder_, bb);
 

@@ -97,6 +97,8 @@ struct FunctionAST : StmtAST {
     std::string returnType;
     std::vector<std::pair<std::string, std::string>> params;
     std::vector<std::unique_ptr<StmtAST>> body;
+    bool isExtension = false;
+    std::string extensionType;
     FunctionAST(const std::string &n,
                 const std::string &ret,
                 const std::vector<std::pair<std::string, std::string>> &p,

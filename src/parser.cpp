@@ -845,6 +845,8 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         {
             next();
             std::vector<std::pair<std::string, std::string>> params;
+            bool isExtension = false;
+            std::string extensionType;
             if (cur_.kind != tok_paren_close)
             {
                 while (true)
@@ -867,6 +869,30 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                             dotCount++;
                         }
                         params.emplace_back("...", "...");
+                        break;
+                    }
+                    if (cur_.kind == tok_this)
+                    {
+                        next();
+                        if (!isTypeToken(cur_) && cur_.kind != tok_identifier)
+                        {
+                            throw ParseError("expected type after 'this' in extension method parameter", cur_.location);
+                        }
+                        std::string ptype = parseTypeString();
+                        if (cur_.kind != tok_identifier)
+                        {
+                            throw ParseError("expected parameter name after type in extension method", cur_.location);
+                        }
+                        std::string pname = cur_.text;
+                        next();
+                        isExtension = true;
+                        extensionType = ptype;
+                        params.emplace_back(pname, ptype);
+                        if (cur_.kind == tok_comma)
+                        {
+                            next();
+                            continue;
+                        }
                         break;
                     }
                     if (verbose_)
@@ -912,7 +938,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                     body.push_back(std::move(s));
             }
             next(); // '}'
-            return std::make_unique<FunctionAST>(name, typeOrReturn, params, std::move(body));
+            auto func = std::make_unique<FunctionAST>(name, typeOrReturn, params, std::move(body));
+            func->isExtension = isExtension;
+            func->extensionType = extensionType;
+            return func;
         }
         if (cur_.kind != tok_equal)
             throw ParseError("expected '=' after variable name", cur_.location);

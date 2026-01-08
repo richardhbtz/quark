@@ -316,6 +316,11 @@ void SemanticAnalyzer::collectFunction(FunctionAST *func)
 {
     std::string funcName = func->name;
 
+    if (func->isExtension)
+    {
+        funcName = func->extensionType + "::" + func->name;
+    }
+
     Symbol sym;
     sym.kind = Symbol::Kind::Function;
     sym.name = funcName;
@@ -1209,12 +1214,24 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
     }
     else if (objType.type == QuarkType::String)
     {
+        std::string extensionName = "str::" + expr->methodName;
+        Symbol *extMethod = symbolTable_.lookup(extensionName);
+        if (extMethod && extMethod->kind == Symbol::Kind::Function)
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            return resolveType(extMethod->returnType);
+        }
+
         if (expr->methodName == "length" || expr->methodName == "substring" ||
             expr->methodName == "charAt" || expr->methodName == "indexOf" ||
             expr->methodName == "slice" || expr->methodName == "find" ||
             expr->methodName == "split" || expr->methodName == "concat" ||
             expr->methodName == "replace" || expr->methodName == "starts_with" ||
-            expr->methodName == "ends_with")
+            expr->methodName == "ends_with" || expr->methodName == "upper" ||
+            expr->methodName == "lower" || expr->methodName == "trim")
         {
             for (auto &arg : expr->args)
             {
@@ -1241,6 +1258,68 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
             }
             return TypeInfo(QuarkType::String, expr->location);
         }
+        error("strings do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
+    else if (objType.type == QuarkType::Int)
+    {
+        std::string extensionName = "int::" + expr->methodName;
+        Symbol *extMethod = symbolTable_.lookup(extensionName);
+        if (extMethod && extMethod->kind == Symbol::Kind::Function)
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            return resolveType(extMethod->returnType);
+        }
+        error("int does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
+    else if (objType.type == QuarkType::Float)
+    {
+        std::string extensionName = "float::" + expr->methodName;
+        Symbol *extMethod = symbolTable_.lookup(extensionName);
+        if (extMethod && extMethod->kind == Symbol::Kind::Function)
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            return resolveType(extMethod->returnType);
+        }
+        error("float does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
+    else if (objType.type == QuarkType::Double)
+    {
+        std::string extensionName = "double::" + expr->methodName;
+        Symbol *extMethod = symbolTable_.lookup(extensionName);
+        if (extMethod && extMethod->kind == Symbol::Kind::Function)
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            return resolveType(extMethod->returnType);
+        }
+        error("double does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+        return TypeInfo(QuarkType::Unknown, expr->location);
+    }
+    else if (objType.type == QuarkType::Boolean)
+    {
+        std::string extensionName = "bool::" + expr->methodName;
+        Symbol *extMethod = symbolTable_.lookup(extensionName);
+        if (extMethod && extMethod->kind == Symbol::Kind::Function)
+        {
+            for (auto &arg : expr->args)
+            {
+                analyzeExpr(arg.get());
+            }
+            return resolveType(extMethod->returnType);
+        }
+        error("bool does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+        return TypeInfo(QuarkType::Unknown, expr->location);
     }
     else if (objType.type == QuarkType::Map)
     {
@@ -1374,6 +1453,17 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
 
         if (objType.type == QuarkType::String)
         {
+            std::string extensionName = "str::" + expr->methodName;
+            Symbol *extMethod = symbolTable_.lookup(extensionName);
+            if (extMethod && extMethod->kind == Symbol::Kind::Function)
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.get());
+                }
+                return resolveType(extMethod->returnType);
+            }
+
             if (expr->methodName == "length" || expr->methodName == "slice" ||
                 expr->methodName == "find" || expr->methodName == "replace" || expr->methodName == "split")
             {
@@ -1402,6 +1492,70 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
                 }
             }
             error("strings do not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+            return TypeInfo(QuarkType::Unknown, expr->location);
+        }
+
+        if (objType.type == QuarkType::Int)
+        {
+            std::string extensionName = "int::" + expr->methodName;
+            Symbol *extMethod = symbolTable_.lookup(extensionName);
+            if (extMethod && extMethod->kind == Symbol::Kind::Function)
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.get());
+                }
+                return resolveType(extMethod->returnType);
+            }
+            error("int does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+            return TypeInfo(QuarkType::Unknown, expr->location);
+        }
+
+        if (objType.type == QuarkType::Float)
+        {
+            std::string extensionName = "float::" + expr->methodName;
+            Symbol *extMethod = symbolTable_.lookup(extensionName);
+            if (extMethod && extMethod->kind == Symbol::Kind::Function)
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.get());
+                }
+                return resolveType(extMethod->returnType);
+            }
+            error("float does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+            return TypeInfo(QuarkType::Unknown, expr->location);
+        }
+
+        if (objType.type == QuarkType::Double)
+        {
+            std::string extensionName = "double::" + expr->methodName;
+            Symbol *extMethod = symbolTable_.lookup(extensionName);
+            if (extMethod && extMethod->kind == Symbol::Kind::Function)
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.get());
+                }
+                return resolveType(extMethod->returnType);
+            }
+            error("double does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
+            return TypeInfo(QuarkType::Unknown, expr->location);
+        }
+
+        if (objType.type == QuarkType::Boolean)
+        {
+            std::string extensionName = "bool::" + expr->methodName;
+            Symbol *extMethod = symbolTable_.lookup(extensionName);
+            if (extMethod && extMethod->kind == Symbol::Kind::Function)
+            {
+                for (auto &arg : expr->args)
+                {
+                    analyzeExpr(arg.get());
+                }
+                return resolveType(extMethod->returnType);
+            }
+            error("bool does not have a method '" + expr->methodName + "'", expr->location, "E133", expr->methodName.size());
             return TypeInfo(QuarkType::Unknown, expr->location);
         }
 

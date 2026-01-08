@@ -140,11 +140,16 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
     if (verbose_)
         printf("[codegen] starting to declare user functions\n");
 
-    // Declare user functions
     for (auto *f : allFunctions)
     {
+        std::string funcName = f->name;
+        if (f->isExtension)
+        {
+            funcName = f->extensionType + "::" + f->name;
+        }
+
         if (verbose_)
-            printf("[codegen] declaring function: %s\n", f->name.c_str());
+            printf("[codegen] declaring function: %s\n", funcName.c_str());
 
         // Determine return type
         LLVMTypeRef returnType;
@@ -197,12 +202,13 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         std::vector<LLVMTypeRef> paramTypes;
         bool isVariadic = false;
 
-        bool isStructMethod = (f->name.find("::") != std::string::npos);
+        bool isStructMethod = (funcName.find("::") != std::string::npos);
+        bool isExtensionMethod = f->isExtension;
         bool isConstructor = false;
-        if (isStructMethod)
+        if (isStructMethod && !isExtensionMethod)
         {
-            std::string structName = f->name.substr(0, f->name.find("::"));
-            std::string methodName = f->name.substr(f->name.find("::") + 2);
+            std::string structName = funcName.substr(0, funcName.find("::"));
+            std::string methodName = funcName.substr(funcName.find("::") + 2);
 
             isConstructor = (methodName == "new" && f->returnType == structName);
 
@@ -215,16 +221,16 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
                     paramTypes.push_back(selfPtrTy);
                     if (verbose_)
                         printf("[codegen] adding implicit 'this' (pointer) parameter of type %s* for method %s\n",
-                               structName.c_str(), f->name.c_str());
+                               structName.c_str(), funcName.c_str());
                     paramTypes.push_back(int8ptr_t_);
                     if (verbose_)
-                        printf("[codegen] inserting hidden dynamic type name param for %s right after 'this'\n", f->name.c_str());
+                        printf("[codegen] inserting hidden dynamic type name param for %s right after 'this'\n", funcName.c_str());
                 }
             }
             else
             {
                 if (verbose_)
-                    printf("[codegen] skipping 'this' parameter for constructor method %s\n", f->name.c_str());
+                    printf("[codegen] skipping 'this' parameter for constructor method %s\n", funcName.c_str());
             }
         }
 
@@ -232,12 +238,11 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         {
             const std::string &ptype = p.second;
 
-            // Check for variadic parameter
             if (ptype == "...")
             {
                 isVariadic = true;
                 if (verbose_)
-                    printf("[codegen] function %s is variadic\n", f->name.c_str());
+                    printf("[codegen] function %s is variadic\n", funcName.c_str());
                 continue;
             }
 
@@ -273,7 +278,6 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             }
             else
             {
-                // Check if it's a struct type
                 auto structIt = g_struct_types_.find(ptype);
                 if (structIt != g_struct_types_.end())
                 {
@@ -286,23 +290,23 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             }
         }
         if (verbose_)
-            printf("[codegen] creating LLVM function type for %s\n", f->name.c_str());
+            printf("[codegen] creating LLVM function type for %s\n", funcName.c_str());
         LLVMTypeRef ftype = LLVMFunctionType(returnType, paramTypes.empty() ? nullptr : paramTypes.data(),
-                                             (unsigned)paramTypes.size(), isVariadic ? 1 : 0); // set variadic flag
+                                             (unsigned)paramTypes.size(), isVariadic ? 1 : 0);
         if (verbose_)
-            printf("[codegen] adding LLVM function %s to module (variadic: %s)\n", f->name.c_str(), isVariadic ? "yes" : "no");
-        LLVMValueRef fn = LLVMAddFunction(module_, f->name.c_str(), ftype);
-        if (f->name != "main")
+            printf("[codegen] adding LLVM function %s to module (variadic: %s)\n", funcName.c_str(), isVariadic ? "yes" : "no");
+        LLVMValueRef fn = LLVMAddFunction(module_, funcName.c_str(), ftype);
+        if (funcName != "main")
         {
             LLVMSetLinkage(fn, LLVMInternalLinkage);
         }
-        g_function_map_[f->name] = fn;
-        g_function_param_types_[f->name] = paramTypes;
+        g_function_map_[funcName] = fn;
+        g_function_param_types_[funcName] = paramTypes;
 
-        g_variadic_functions_[f->name] = isVariadic;
+        g_variadic_functions_[funcName] = isVariadic;
         if (verbose_ && isVariadic)
         {
-            printf("[codegen] registered function '%s' as variadic in g_variadic_functions_\n", f->name.c_str());
+            printf("[codegen] registered function '%s' as variadic in g_variadic_functions_\n", funcName.c_str());
         }
 
         QuarkType returnQuarkType;
@@ -320,7 +324,6 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             returnQuarkType = QuarkType::Void;
         else
         {
-            // Check if it's a struct type
             auto structIt = g_struct_types_.find(f->returnType);
             if (structIt != g_struct_types_.end())
             {
@@ -328,15 +331,15 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
             }
             else
             {
-                returnQuarkType = QuarkType::Int; // default fallback
+                returnQuarkType = QuarkType::Int;
             }
         }
 
         std::string structName = (returnQuarkType == QuarkType::Struct) ? f->returnType : "";
-        expressionCodeGen_->declareFunctionType(f->name, returnQuarkType, {}, structName);
+        expressionCodeGen_->declareFunctionType(funcName, returnQuarkType, {}, structName);
 
         if (verbose_)
-            printf("[codegen] successfully declared function %s with return type %s\n", f->name.c_str(), f->returnType.c_str());
+            printf("[codegen] successfully declared function %s with return type %s\n", funcName.c_str(), f->returnType.c_str());
     }
 }
 
