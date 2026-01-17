@@ -5,8 +5,8 @@
 #include <cstring>
 #include <regex>
 
-// Simple JSON parsing/generation (minimal implementation)
-// For production, use a proper JSON library
+
+
 
 namespace lsp {
 
@@ -49,26 +49,26 @@ std::string unescape(const std::string& s) {
 }
 
 std::string getString(const std::string& json, const std::string& key) {
-    // Find the key
+    
     std::string keyPattern = "\"" + key + "\"";
     size_t keyPos = json.find(keyPattern);
     if (keyPos == std::string::npos) return "";
     
-    // Find the colon after the key
+    
     size_t colonPos = json.find(':', keyPos + keyPattern.size());
     if (colonPos == std::string::npos) return "";
     
-    // Skip whitespace
+    
     size_t start = colonPos + 1;
     while (start < json.size() && (json[start] == ' ' || json[start] == '\t' || json[start] == '\n' || json[start] == '\r')) {
         start++;
     }
     
-    // Check for opening quote
+    
     if (start >= json.size() || json[start] != '"') return "";
     start++;
     
-    // Parse string value, handling escapes
+    
     std::string value;
     while (start < json.size() && json[start] != '"') {
         if (json[start] == '\\' && start + 1 < json.size()) {
@@ -94,15 +94,15 @@ std::string getString(const std::string& json, const std::string& key) {
     return value;
 }
 
-// Get ID which can be either string or integer in JSON-RPC
+
 std::string getId(const std::string& json) {
-    // Try string first: "id": "..."
+    
     std::regex reStr("\"id\"\\s*:\\s*\"([^\"]*)\"");
     std::smatch matchStr;
     if (std::regex_search(json, matchStr, reStr) && matchStr.size() > 1) {
         return "\"" + matchStr[1].str() + "\"";
     }
-    // Try integer: "id": 123
+    
     std::regex reInt("\"id\"\\s*:\\s*(-?\\d+)");
     std::smatch matchInt;
     if (std::regex_search(json, matchInt, reInt) && matchInt.size() > 1) {
@@ -151,11 +151,11 @@ std::string getObject(const std::string& json, const std::string& key) {
     return json.substr(start, end - start);
 }
 
-} // namespace json
+} 
 
-// ============================================================================
-// LspServer implementation
-// ============================================================================
+
+
+
 
 LspServer::LspServer() {}
 
@@ -184,7 +184,7 @@ void LspServer::run() {
 }
 
 std::string LspServer::readMessage() {
-    // Read headers
+    
     std::string headers;
     int contentLength = 0;
     
@@ -194,7 +194,7 @@ std::string LspServer::readMessage() {
             return "";
         }
         
-        // Remove \r if present
+        
         if (!line.empty() && line.back() == '\r') {
             line.pop_back();
         }
@@ -212,7 +212,7 @@ std::string LspServer::readMessage() {
         return "";
     }
     
-    // Read content
+    
     std::string content(contentLength, '\0');
     std::cin.read(&content[0], contentLength);
     
@@ -239,7 +239,7 @@ std::string LspServer::processMessage(const std::string& message) {
         
         log("Processing: method=" + method + ", id=" + id);
         
-        // Handle requests (have id)
+        
         if (!id.empty()) {
             if (method == "initialize") {
                 return handleInitialize(id, params);
@@ -266,11 +266,11 @@ std::string LspServer::processMessage(const std::string& message) {
             return handleSignatureHelp(id, params);
         }
         
-        // Unknown request
+        
         return createErrorResponse(id, -32601, "Method not found: " + method);
     }
     
-    // Handle notifications (no id)
+    
     if (method == "initialized") {
         handleInitialized();
     }
@@ -300,9 +300,9 @@ std::string LspServer::processMessage(const std::string& message) {
     }
 }
 
-// ============================================================================
-// JSON-RPC utilities
-// ============================================================================
+
+
+
 
 std::string LspServer::createResponse(const std::string& id, const std::string& result) {
     return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":" + result + "}";
@@ -318,15 +318,15 @@ std::string LspServer::createNotification(const std::string& method, const std::
     return "{\"jsonrpc\":\"2.0\",\"method\":\"" + method + "\",\"params\":" + params + "}";
 }
 
-// ============================================================================
-// Lifecycle handlers
-// ============================================================================
+
+
+
 
 std::string LspServer::handleInitialize(const std::string& id, const std::string& params) {
     log("Received initialize request, id=" + id);
     initialized_ = true;
     
-    // Build capabilities response
+    
     std::string capabilities = R"({
         "capabilities": {
             "textDocumentSync": {
@@ -373,9 +373,9 @@ void LspServer::handleExit() {
     std::exit(shutdownRequested_ ? 0 : 1);
 }
 
-// ============================================================================
-// Document synchronization
-// ============================================================================
+
+
+
 
 void LspServer::handleDidOpen(const std::string& params) {
     log("Handling didOpen");
@@ -396,8 +396,8 @@ void LspServer::handleDidChange(const std::string& params) {
     int version = json::getInt(textDocument, "version");
     log("Changing document: " + uri);
     
-    // For simplicity, we only support full document sync
-    // Extract the text from contentChanges array
+    
+    
     size_t changesStart = params.find("\"contentChanges\"");
     if (changesStart != std::string::npos) {
         size_t textStart = params.find("\"text\"", changesStart);
@@ -438,13 +438,13 @@ void LspServer::parseDocument(const std::string& uri, const std::string& content
     doc.content = content;
     doc.version = version;
     
-    // Lex the document
+    
     LspLexer lexer(content, uri);
     doc.tokens = lexer.tokenize();
     
     log("Lexed " + std::to_string(doc.tokens.size()) + " tokens");
     
-    // Add lexer errors as diagnostics
+    
     for (const auto& err : lexer.getErrors()) {
         Diagnostic diag;
         diag.range.start.line = err.range.startLine;
@@ -459,11 +459,11 @@ void LspServer::parseDocument(const std::string& uri, const std::string& content
     
     log("Lexer produced " + std::to_string(doc.diagnostics.size()) + " errors");
     
-    // Parse the document
+    
     LspParser parser(doc.tokens, content);
     doc.ast = parser.parse();
     
-    // Add parser errors as diagnostics
+    
     auto parserDiags = parser.getDiagnostics();
     
     log("Parser produced " + std::to_string(parserDiags.size()) + " errors");
@@ -471,10 +471,10 @@ void LspServer::parseDocument(const std::string& uri, const std::string& content
         doc.diagnostics.push_back(diag);
     }
     
-    // Store document
+    
     documents_[uri] = std::move(doc);
     
-    // Publish diagnostics
+    
     publishDiagnostics(uri, documents_[uri].diagnostics);
 }
 
@@ -499,9 +499,9 @@ void LspServer::publishDiagnostics(const std::string& uri, const std::vector<Dia
     sendMessage(createNotification("textDocument/publishDiagnostics", ss.str()));
 }
 
-// ============================================================================
-// Language feature handlers
-// ============================================================================
+
+
+
 
 std::string LspServer::handleCompletion(const std::string& id, const std::string& params) {
     log("Handling completion request");
@@ -527,7 +527,7 @@ std::string LspServer::handleCompletion(const std::string& id, const std::string
     
     log("Found " + std::to_string(completions.items.size()) + " completions");
     
-    // Build response
+    
     std::ostringstream ss;
     ss << "{\"isIncomplete\":" << (completions.isIncomplete ? "true" : "false") << ",\"items\":[";
     
@@ -740,9 +740,9 @@ std::string LspServer::handleSignatureHelp(const std::string& id, const std::str
     return createResponse(id, ss.str());
 }
 
-// ============================================================================
-// DocumentAnalyzer implementation
-// ============================================================================
+
+
+
 
 DocumentAnalyzer::DocumentAnalyzer(const ParsedDocument& doc) : doc_(doc) {
     buildSymbolTable();
@@ -767,7 +767,7 @@ void DocumentAnalyzer::visitStmt(const Stmt* stmt) {
         def.location.range = toLspRange(func->range);
         symbolTable_[func->name] = def;
         
-        // Visit body
+        
         for (const auto& s : func->body) {
             visitStmt(s.get());
         }
@@ -780,7 +780,7 @@ void DocumentAnalyzer::visitStmt(const Stmt* stmt) {
         def.location.range = toLspRange(structDef->range);
         symbolTable_[structDef->name] = def;
         
-        // Add fields
+        
         for (const auto& field : structDef->fields) {
             SymbolDefinition fieldDef;
             fieldDef.name = structDef->name + "." + field.name;
@@ -790,7 +790,7 @@ void DocumentAnalyzer::visitStmt(const Stmt* stmt) {
             symbolTable_[fieldDef.name] = fieldDef;
         }
         
-        // Add methods
+        
         for (const auto& method : structDef->methods) {
             SymbolDefinition methodDef;
             methodDef.name = structDef->name + "." + method.name;
@@ -866,7 +866,7 @@ bool DocumentAnalyzer::positionInRange(const Position& pos, const SourceRange& r
 }
 
 std::string DocumentAnalyzer::getIdentifierAt(const Position& pos) {
-    // Find token at position
+    
     for (const auto& token : doc_.tokens) {
         if (token.kind == TokenKind::Identifier && 
             positionInRange(pos, token.range)) {
@@ -896,7 +896,7 @@ std::vector<DocumentSymbol> DocumentAnalyzer::getDocumentSymbols() {
             sym.range = toLspRange(structDef->range);
             sym.selectionRange = sym.range;
             
-            // Add fields as children
+            
             for (const auto& field : structDef->fields) {
                 DocumentSymbol fieldSym;
                 fieldSym.name = field.name;
@@ -906,7 +906,7 @@ std::vector<DocumentSymbol> DocumentAnalyzer::getDocumentSymbols() {
                 sym.children.push_back(fieldSym);
             }
             
-            // Add methods as children
+            
             for (const auto& method : structDef->methods) {
                 DocumentSymbol methodSym;
                 methodSym.name = method.name;
@@ -978,7 +978,7 @@ std::vector<Location> DocumentAnalyzer::findReferences(const Position& pos) {
         return refs;
     }
     
-    // Find all tokens with this name
+    
     for (const auto& token : doc_.tokens) {
         if (token.kind == TokenKind::Identifier && token.text == name) {
             Location loc;
@@ -997,7 +997,7 @@ std::optional<Hover> DocumentAnalyzer::getHover(const Position& pos) {
         return std::nullopt;
     }
     
-    // Check symbol table
+    
     auto it = symbolTable_.find(name);
     if (it != symbolTable_.end()) {
         Hover hover;
@@ -1017,7 +1017,7 @@ std::optional<Hover> DocumentAnalyzer::getHover(const Position& pos) {
         return hover;
     }
     
-    // Check for keywords
+    
     for (const auto& token : doc_.tokens) {
         if (positionInRange(pos, token.range) && token.isKeyword()) {
             Hover hover;
@@ -1032,13 +1032,13 @@ std::optional<Hover> DocumentAnalyzer::getHover(const Position& pos) {
 CompletionList DocumentAnalyzer::getCompletions(const Position& pos) {
     CompletionList list;
     
-    // Add keywords
+    
     addKeywordCompletions(list);
     
-    // Add types
+    
     addTypeCompletions(list);
     
-    // Add symbols from symbol table
+    
     for (const auto& [name, def] : symbolTable_) {
         CompletionItem item;
         item.label = name;
@@ -1066,7 +1066,7 @@ CompletionList DocumentAnalyzer::getCompletions(const Position& pos) {
         list.items.push_back(item);
     }
     
-    // Add builtins
+    
     addBuiltinCompletions(list);
     
     return list;
@@ -1103,19 +1103,19 @@ void DocumentAnalyzer::addTypeCompletions(CompletionList& list) {
 
 void DocumentAnalyzer::addBuiltinCompletions(CompletionList& list) {
     static const std::vector<std::pair<std::string, std::string>> builtins = {
-        // I/O Functions
+        
         {"print", "void print(...)"},
         {"readline", "str readline(...)"},
         {"format", "str format(...)"},
         
-        // Type Conversion
+        
         {"to_string", "str to_string(...)"},
         {"toString", "str toString(...)"},
         {"to_int", "int to_int(...)"},
         {"parse_int", "int parse_int(...)"},
         {"parseInt", "int parseInt(...)"},
         
-        // String Functions
+        
         {"str_concat", "str str_concat(a: str, b: str)"},
         {"str_slice", "str str_slice(s: str, start: int, end: int)"},
         {"str_find", "bool str_find(haystack: str, needle: str)"},
@@ -1126,7 +1126,7 @@ void DocumentAnalyzer::addBuiltinCompletions(CompletionList& list) {
         {"str_starts_with", "bool str_starts_with(s: str, prefix: str)"},
         {"str_ends_with", "bool str_ends_with(s: str, suffix: str)"},
         
-        // Math - Trigonometric
+        
         {"sin", "double sin(x: double)"},
         {"cos", "double cos(x: double)"},
         {"tan", "double tan(x: double)"},
@@ -1138,7 +1138,7 @@ void DocumentAnalyzer::addBuiltinCompletions(CompletionList& list) {
         {"cosh", "double cosh(x: double)"},
         {"tanh", "double tanh(x: double)"},
         
-        // Math - Basic Operations
+        
         {"sqrt", "double sqrt(x: double)"},
         {"pow", "double pow(base: double, exp: double)"},
         {"log", "double log(x: double)"},
@@ -1150,7 +1150,7 @@ void DocumentAnalyzer::addBuiltinCompletions(CompletionList& list) {
         {"round", "double round(x: double)"},
         {"fmod", "double fmod(x: double, y: double)"},
         
-        // Math - Integer/Float Specific
+        
         {"abs_i32", "int abs_i32(x: int)"},
         {"abs_f64", "double abs_f64(x: double)"},
         {"min_i32", "int min_i32(a: int, b: int)"},
@@ -1163,14 +1163,14 @@ void DocumentAnalyzer::addBuiltinCompletions(CompletionList& list) {
         {"clamp_f64", "double clamp_f64(x: double, lo: double, hi: double)"},
         {"clamp", "double clamp(...)"},
         
-        // Memory Management
+        
         {"alloc", "void* alloc(size: int)"},
         {"free", "void free(ptr: void*)"},
         {"realloc", "void* realloc(ptr: void*, new_size: int)"},
         {"memset", "void* memset(ptr: void*, value: int, size: int)"},
         {"memcpy", "void* memcpy(dest: void*, src: void*, size: int)"},
         
-        // Utility
+        
         {"sleep", "void sleep(ms: int)"},
     };
     
@@ -1185,10 +1185,10 @@ void DocumentAnalyzer::addBuiltinCompletions(CompletionList& list) {
 }
 
 std::optional<SignatureHelp> DocumentAnalyzer::getSignatureHelp(const Position& pos) {
-    // Find the function call we're in
-    // Look backwards for an identifier followed by '('
     
-    // Simple implementation: look at recent tokens
+    
+    
+    
     int parenDepth = 0;
     int argIndex = 0;
     std::string funcName;
@@ -1196,7 +1196,7 @@ std::optional<SignatureHelp> DocumentAnalyzer::getSignatureHelp(const Position& 
     for (auto it = doc_.tokens.rbegin(); it != doc_.tokens.rend(); ++it) {
         const auto& token = *it;
         
-        // Stop if we've gone past the position
+        
         if (token.range.startLine > pos.line ||
             (token.range.startLine == pos.line && token.range.startColumn > pos.character)) {
             continue;
@@ -1207,7 +1207,7 @@ std::optional<SignatureHelp> DocumentAnalyzer::getSignatureHelp(const Position& 
         }
         else if (token.kind == TokenKind::LeftParen) {
             if (parenDepth == 0) {
-                // Look for preceding identifier
+                
                 auto prev = it + 1;
                 if (prev != doc_.tokens.rend() && prev->kind == TokenKind::Identifier) {
                     funcName = prev->text;
@@ -1225,7 +1225,7 @@ std::optional<SignatureHelp> DocumentAnalyzer::getSignatureHelp(const Position& 
         return std::nullopt;
     }
     
-    // Look up function signature
+    
     auto it = symbolTable_.find(funcName);
     if (it == symbolTable_.end() || it->second.kind != SymbolKind::Function) {
         return std::nullopt;
@@ -1233,7 +1233,7 @@ std::optional<SignatureHelp> DocumentAnalyzer::getSignatureHelp(const Position& 
     
     SignatureHelp help;
     SignatureInformation sig;
-    sig.label = funcName + "(...)";  // TODO: Add actual parameter types
+    sig.label = funcName + "(...)";  
     sig.documentation = it->second.detail;
     help.signatures.push_back(sig);
     help.activeSignature = 0;
@@ -1242,4 +1242,4 @@ std::optional<SignatureHelp> DocumentAnalyzer::getSignatureHelp(const Position& 
     return help;
 }
 
-} // namespace lsp
+} 

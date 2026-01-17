@@ -111,7 +111,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         printf("[parser] parseStatement entry: kind=%d text='%s' at %d:%d\n", (int)cur_.kind, cur_.text.c_str(), cur_.location.line, cur_.location.column);
     }
 
-    // module declaration: module <name>
     if (cur_.kind == tok_module)
     {
         SourceLocation moduleLoc = cur_.location;
@@ -143,7 +142,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return modDecl;
     }
 
-    // break statement
     if (cur_.kind == tok_break)
     {
         next();
@@ -152,7 +150,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return std::make_unique<BreakStmt>();
     }
 
-    // continue statement
     if (cur_.kind == tok_continue)
     {
         next();
@@ -167,7 +164,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         next();
         std::vector<std::string> modulePaths;
 
-        // Allow import { mod1, mod2 } for multiple imports
         if (cur_.kind == tok_brace_open)
         {
             next();
@@ -175,7 +171,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             {
                 if (cur_.kind == tok_identifier)
                 {
-                    // Parse module path: json, http/client, etc.
+
                     std::string moduleName = cur_.text;
                     next();
                     while (cur_.kind == tok_div)
@@ -212,7 +208,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         }
         else if (cur_.kind == tok_identifier)
         {
-            // import modulename or import mod/submod
+
             std::string moduleName = cur_.text;
             next();
             while (cur_.kind == tok_div)
@@ -248,12 +244,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         auto inc = std::make_unique<IncludeStmt>();
         inc->location = importLoc;
 
-        // Process each import
         for (const std::string &modulePath : modulePaths)
         {
             std::string resolvedPath;
 
-            // Resolve via module resolver
             if (g_moduleResolver)
             {
                 auto resolved = g_moduleResolver->resolve(modulePath, cur_.location.filename);
@@ -268,7 +262,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
             else
             {
-                // Fallback: try lib/<module>/<module>.k pattern
+
                 resolvedPath = "lib/" + modulePath + "/" + modulePath + ".k";
                 std::string baseMod = modulePath;
                 auto slashPos = modulePath.find('/');
@@ -279,7 +273,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 }
             }
 
-            // Read file contents
             std::ifstream f(resolvedPath);
             if (!f.is_open())
             {
@@ -292,13 +285,11 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             std::string contents((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
             f.close();
 
-            // Add file to source manager for proper error reporting
             if (ctx_)
             {
                 ctx_->sourceManager.addFile(resolvedPath, contents);
             }
 
-            // Track imported file
             inc->importedFiles.push_back(resolvedPath);
 
             Lexer sublex(contents, verbose_, resolvedPath);
@@ -327,7 +318,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     {
         next();
 
-        // Expect "C" string literal
         if (cur_.kind != tok_string || cur_.text != "C")
             throw ParseError("expected \"C\" after extern", cur_.location);
         next();
@@ -339,11 +329,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
 
             while (cur_.kind != tok_brace_close && cur_.kind != tok_eof)
             {
-                // Supported forms:
 
                 if (cur_.kind == tok_struct)
                 {
-                    next(); // consume 'struct'
+                    next();
                     if (cur_.kind != tok_identifier)
                         throw ParseError("expected struct name after 'struct'", cur_.location);
                     std::string structName = cur_.text;
@@ -363,23 +352,22 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                     std::string name = cur_.text;
                     next();
 
-                    // Check if this is a function declaration (has '(') or variable declaration (ends with ';')
                     if (cur_.kind == tok_semicolon)
                     {
-                        // This is an extern variable declaration: type name;
+
                         next();
                         inc->stmts.push_back(std::make_unique<ExternVarAST>(name, typeName));
                     }
                     else if (cur_.kind == tok_paren_open)
                     {
-                        // This is an extern function declaration: type name(params);
+
                         next();
                         std::vector<std::pair<std::string, std::string>> params;
                         if (cur_.kind != tok_paren_close)
                         {
                             while (true)
                             {
-                                // Variadic ...
+
                                 if (cur_.kind == tok_range)
                                 {
                                     next();
@@ -400,16 +388,15 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                                     break;
                                 }
 
-                                // Check if it's name: type or just type
                                 if (cur_.kind == tok_identifier)
                                 {
-                                    // Could be "name: type" or just "TypeName"
+
                                     std::string first = cur_.text;
                                     next();
                                     if (cur_.kind == tok_colon)
                                     {
-                                        // It's "name: type" format
-                                        next(); // consume ':'
+
+                                        next();
                                         if (!isTypeToken(cur_) && cur_.kind != tok_identifier)
                                             throw ParseError("expected parameter type after ':'", cur_.location);
                                         std::string pt = parseTypeString();
@@ -417,7 +404,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                                     }
                                     else
                                     {
-                                        // It was just a type name (like "MyStruct"), need to handle pointer suffix
+
                                         std::string paramTypeName = first;
                                         while (cur_.kind == tok_mul)
                                         {
@@ -429,7 +416,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                                 }
                                 else if (isTypeToken(cur_))
                                 {
-                                    // It's a builtin type keyword
+
                                     std::string pt = parseTypeString();
                                     params.emplace_back("", pt);
                                 }
@@ -479,20 +466,18 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             next();
             return std::make_unique<ExternStructDeclAST>(structName);
         }
-        // Parse return type
+
         if (cur_.kind != tok_identifier && cur_.kind != tok_bool &&
             cur_.kind != tok_int && cur_.kind != tok_str &&
             cur_.kind != tok_float && cur_.kind != tok_double)
             throw ParseError("expected return type after extern \"C\"", cur_.location);
         std::string returnType = parseTypeString();
 
-        // Parse function name
         if (cur_.kind != tok_identifier)
             throw ParseError("expected function name", cur_.location);
         std::string funcName = cur_.text;
         next();
 
-        // Parse parameter list
         if (cur_.kind != tok_paren_open)
             throw ParseError("expected '(' after function name", cur_.location);
         next();
@@ -543,14 +528,14 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         if (cur_.kind != tok_paren_open)
             throw ParseError("expected '(' after 'for'", cur_.location);
 
-        next(); // consume '('
+        next();
 
         std::unique_ptr<StmtAST> initStmt;
         if (cur_.kind != tok_semicolon && cur_.kind != tok_paren_close)
         {
             if (cur_.kind == tok_var)
             {
-                SourceLocation forVarLoc = cur_.location; // Save location of 'var'
+                SourceLocation forVarLoc = cur_.location;
                 next();
                 if (cur_.kind != tok_identifier)
                     throw ParseError("expected variable name after 'var' in for(...)", cur_.location);
@@ -558,7 +543,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 next();
                 if (cur_.kind == tok_in)
                 {
-                    // for (var i in expr)
+
                     next();
                     auto rangeExpr = parseExpression();
                     if (cur_.kind != tok_paren_close)
@@ -579,7 +564,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                     next();
                     return std::make_unique<ForStmt>(loopVar, std::move(rangeExpr), std::move(body));
                 }
-                // var name[: type] = expr ;
+
                 std::string varType = "auto";
                 if (cur_.kind == tok_colon)
                 {
@@ -601,7 +586,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
             else if (isTypeToken(cur_) || (cur_.kind == tok_identifier && peekToken().kind == tok_identifier))
             {
-                SourceLocation forTypeLoc = cur_.location; // Save location of type
+                SourceLocation forTypeLoc = cur_.location;
                 std::string maybeType = parseTypeString();
                 if (cur_.kind == tok_identifier)
                 {
@@ -609,7 +594,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                     next();
                     if (cur_.kind == tok_in)
                     {
-                        // for (int i in expr)
+
                         next();
                         auto rangeExpr = parseExpression();
                         if (cur_.kind != tok_paren_close)
@@ -684,7 +669,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         }
         else
         {
-            // Empty init
+
             next();
         }
 
@@ -737,12 +722,11 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             if (s)
                 body.push_back(std::move(s));
         }
-        next(); // consume '}'
+        next();
 
         if (incrStmt)
             body.push_back(std::move(incrStmt));
 
-        // Build while(cond) { body }
         auto whileStmt = std::make_unique<WhileStmt>(std::move(condExpr), std::move(body));
 
         auto block = std::make_unique<IncludeStmt>();
@@ -752,11 +736,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return block;
     }
 
-    // Handle map declaration: map varName; or map varName = { ... };
     if (cur_.kind == tok_map)
     {
         SourceLocation mapDeclLoc = cur_.location;
-        next(); // consume 'map'
+        next();
 
         if (cur_.kind != tok_identifier)
         {
@@ -768,12 +751,12 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         std::unique_ptr<ExprAST> initExpr;
         if (cur_.kind == tok_equal)
         {
-            next(); // consume '='
+            next();
             initExpr = parseExpression();
         }
         else
         {
-            // Empty map initialization: map {}
+
             initExpr = std::make_unique<MapLiteralExpr>(
                 std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>>());
         }
@@ -790,11 +773,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         return stmt;
     }
 
-    // Handle list declaration: list varName; or list varName = [ ... ];
     if (cur_.kind == tok_list)
     {
         SourceLocation listDeclLoc = cur_.location;
-        next(); // consume 'list'
+        next();
 
         if (cur_.kind != tok_identifier)
         {
@@ -806,12 +788,12 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         std::unique_ptr<ExprAST> initExpr;
         if (cur_.kind == tok_equal)
         {
-            next(); // consume '='
+            next();
             initExpr = parseExpression();
         }
         else
         {
-            // Empty list initialization: list []
+
             initExpr = std::make_unique<ListLiteralExpr>(std::vector<std::unique_ptr<ExprAST>>());
         }
 
@@ -829,7 +811,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
 
     if (isTypeToken(cur_) || (cur_.kind == tok_identifier && cur_.text != "for" && peekToken().kind == tok_identifier))
     {
-        SourceLocation typeDeclLoc = cur_.location; // Save location of type
+        SourceLocation typeDeclLoc = cur_.location;
         if (verbose_)
             printf("[parser] type-first branch: cur kind=%d text='%s' next kind=%d text='%s'\n",
                    (int)cur_.kind, cur_.text.c_str(), (int)peekToken().kind, peekToken().text.c_str());
@@ -851,7 +833,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             {
                 while (true)
                 {
-                    // Variadic: ...
+
                     if (cur_.kind == tok_range)
                     {
                         next();
@@ -937,7 +919,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 if (s)
                     body.push_back(std::move(s));
             }
-            next(); // '}'
+            next();
             auto func = std::make_unique<FunctionAST>(name, typeOrReturn, params, std::move(body));
             func->isExtension = isExtension;
             func->extensionType = extensionType;
@@ -976,11 +958,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         if (verbose_)
             printf("[parser] parsed typed variable declaration: %s %s\n", typeOrReturn.c_str(), name.c_str());
         auto stmt = std::make_unique<VarDeclStmt>(typeOrReturn, name, std::move(initExpr));
-        stmt->location = typeDeclLoc; // Set the location of the VarDeclStmt
+        stmt->location = typeDeclLoc;
         return stmt;
     }
 
-    // If/elif/else statement
     if (cur_.kind == tok_if)
     {
         if (verbose_)
@@ -1005,7 +986,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         {
             thenBody.push_back(parseStatement());
         }
-        next(); // consume '}'
+        next();
         std::vector<std::pair<std::unique_ptr<ExprAST>, std::vector<std::unique_ptr<StmtAST>>>> elifs;
         while (cur_.kind == tok_elif)
         {
@@ -1025,7 +1006,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             {
                 elifBody.push_back(parseStatement());
             }
-            next(); // consume '}'
+            next();
             elifs.emplace_back(std::move(elifCond), std::move(elifBody));
         }
         std::vector<std::unique_ptr<StmtAST>> elseBody;
@@ -1050,11 +1031,11 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
                 {
                     elifBody.push_back(parseStatement());
                 }
-                next(); // consume '}'
+                next();
                 elifs.emplace_back(std::move(elifCond), std::move(elifBody));
                 continue;
             }
-            // Plain else block
+
             if (cur_.kind != tok_brace_open)
                 throw ParseError("expected '{' after 'else'", cur_.location);
             next();
@@ -1062,23 +1043,23 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             {
                 elseBody.push_back(parseStatement());
             }
-            next(); // consume '}'
-            break;  // only one else block allowed
+            next();
+            break;
         }
         return std::make_unique<IfStmtAST>(std::move(cond), std::move(thenBody), std::move(elifs), std::move(elseBody));
     }
 
     if (cur_.kind == tok_var)
     {
-        SourceLocation varDeclLoc = cur_.location; // Save location of 'var' keyword
+        SourceLocation varDeclLoc = cur_.location;
         next();
         if (cur_.kind != tok_identifier)
             throw ParseError("expected variable name after 'var'", cur_.location);
         auto varName = cur_.text;
-        SourceLocation varNameLoc = cur_.location; // Save location of variable name
+        SourceLocation varNameLoc = cur_.location;
         next();
 
-        std::string varType = "auto"; // default to auto/inferred
+        std::string varType = "auto";
 
         if (cur_.kind == tok_colon)
         {
@@ -1123,11 +1104,10 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         if (verbose_)
             printf("[parser] parsed dynamic variable declaration: %s\n", varName.c_str());
         auto stmt = std::make_unique<VarDeclStmt>(varType, varName, std::move(initExpr));
-        stmt->location = varDeclLoc; // Set the location of the VarDeclStmt
+        stmt->location = varDeclLoc;
         return stmt;
     }
 
-    // While-loop
     if (cur_.kind == tok_while)
     {
         next();
@@ -1165,8 +1145,7 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     if (cur_.kind == tok_ret)
     {
         next();
-        
-        // Check if this is a void return (ret; with no expression)
+
         std::unique_ptr<ExprAST> returnValue = nullptr;
         if (cur_.kind != tok_semicolon)
         {
@@ -1196,26 +1175,23 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
     if (cur_.kind == tok_match)
     {
         next();
-        // Parse match expression - but we need to stop before '{' since that starts the match body
-        // For simple cases (variable name), just parse the identifier directly
+
         std::unique_ptr<ExprAST> matchExpr;
         if (cur_.kind == tok_identifier)
         {
             std::string varName = cur_.text;
             next();
-            // Check if this is a simple variable (next token is '{')
-            // or a more complex expression (has operators)
+
             if (cur_.kind == tok_brace_open)
             {
-                // Simple variable case - don't try to parse as struct literal
+
                 matchExpr = std::make_unique<VariableExprAST>(varName);
             }
             else if (cur_.kind == tok_dot || cur_.kind == tok_square_bracket_open)
             {
-                // Member access or array access - need to continue parsing
+
                 auto varExpr = std::make_unique<VariableExprAST>(varName);
-                // Put it back for proper expression parsing
-                // Actually, let's just parse the rest as a continuation
+
                 if (cur_.kind == tok_dot)
                 {
                     next();
@@ -1237,14 +1213,13 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
             }
             else
             {
-                // Has operators - parse as full expression
-                // Need to reconstruct - this is tricky, let's just handle simple cases
+
                 matchExpr = std::make_unique<VariableExprAST>(varName);
             }
         }
         else
         {
-            // For non-identifier expressions, use regular parseExpression
+
             matchExpr = parseExpression();
         }
 
@@ -1258,7 +1233,6 @@ std::unique_ptr<StmtAST> Parser::parseStatement()
         {
             MatchArm arm;
 
-            // Check for wildcard pattern (_)
             if (cur_.kind == tok_identifier && cur_.text == "_")
             {
                 arm.isWildcard = true;
@@ -1566,40 +1540,40 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
             op = '/';
         else if (cur_.kind == tok_mod)
             op = '%';
-        // Bitwise operators
+
         else if (cur_.kind == tok_ampersand)
         {
-            op = 'A'; // 'A' for bitwise AND
+            op = 'A';
             if (verbose_)
                 printf("[parser] recognized & (bitwise AND) operator\n");
         }
         else if (cur_.kind == tok_bitwise_or)
         {
-            op = 'O'; // 'O' for bitwise OR
+            op = 'O';
             if (verbose_)
                 printf("[parser] recognized | (bitwise OR) operator\n");
         }
         else if (cur_.kind == tok_bitwise_xor)
         {
-            op = 'X'; // 'X' for bitwise XOR
+            op = 'X';
             if (verbose_)
                 printf("[parser] recognized ^ (bitwise XOR) operator\n");
         }
         else if (cur_.kind == tok_shift_left)
         {
-            op = 'L'; // 'L' for shift left
+            op = 'L';
             if (verbose_)
                 printf("[parser] recognized << (shift left) operator\n");
         }
         else if (cur_.kind == tok_shift_right)
         {
-            op = 'R'; // 'R' for shift right
+            op = 'R';
             if (verbose_)
                 printf("[parser] recognized >> (shift right) operator\n");
         }
         else if (cur_.kind == tok_dot)
         {
-            next(); // consume '.'
+            next();
             if (cur_.kind != tok_identifier)
                 throw ParseError("expected field name after '.'", cur_.location);
             std::string fieldName = cur_.text;
@@ -1607,7 +1581,7 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
 
             if (cur_.kind == tok_paren_open)
             {
-                next(); // consume '('
+                next();
                 std::vector<std::unique_ptr<ExprAST>> args;
 
                 while (cur_.kind != tok_paren_close)
@@ -1622,10 +1596,8 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
                         throw ParseError("expected ',' or ')' in method call arguments", cur_.location);
                     }
                 }
-                next(); // consume ')'
+                next();
 
-                // Check if lhs is a simple identifier (potential static call)
-                // But NOT for "this" - that should always be a method call
                 if (auto *varExpr = dynamic_cast<VariableExprAST *>(lhs.get()))
                 {
                     if (varExpr->name == "this")
@@ -1642,30 +1614,30 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
                 }
                 else
                 {
-                    // It's an instance method call on a complex expression
+
                     lhs = std::make_unique<MethodCallExpr>(std::move(lhs), fieldName, std::move(args));
                 }
             }
             else
             {
-                // Regular field access
+
                 lhs = std::make_unique<MemberAccessExpr>(std::move(lhs), fieldName);
             }
             continue;
         }
         else if (cur_.kind == tok_square_bracket_open)
         {
-            next(); // consume '['
+            next();
             auto indexExpr = parseExpression();
             if (cur_.kind != tok_square_bracket_close)
                 throw ParseError("expected ']' after array index", cur_.location);
-            next(); // consume ']'
+            next();
             lhs = std::make_unique<ArrayAccessExpr>(std::move(lhs), std::move(indexExpr));
             continue;
         }
         else if (cur_.kind == tok_range)
         {
-            next(); // consume '..'
+            next();
             auto end = parseExpression(tokPrec + 1);
             lhs = std::make_unique<RangeExpr>(std::move(lhs), std::move(end));
             continue;
@@ -1689,7 +1661,7 @@ std::unique_ptr<ExprAST> Parser::parseExpression(int precedence)
 
 std::unique_ptr<ExprAST> Parser::parsePrimary()
 {
-    // Handle unary operators
+
     if (cur_.kind == tok_minus)
     {
         char op = '-';
@@ -1704,7 +1676,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         auto operand = parseExpression(39);
         return std::make_unique<UnaryExprAST>(op, std::move(operand));
     }
-    // Bitwise NOT (~)
+
     if (cur_.kind == tok_bitwise_not)
     {
         char op = '~';
@@ -1727,17 +1699,16 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         return std::make_unique<DereferenceExpr>(std::move(operand));
     }
 
-    // Map literal: map { "key": value, ... } or just { "key": value, ... }
     if (cur_.kind == tok_map)
     {
         SourceLocation mapLoc = cur_.location;
-        next(); // consume 'map'
+        next();
 
         if (cur_.kind != tok_brace_open)
         {
             throw ParseError("expected '{' after 'map' keyword", cur_.location);
         }
-        next(); // consume '{'
+        next();
 
         std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs;
 
@@ -1750,15 +1721,15 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
                 {
                     throw ParseError("expected ':' after map key", cur_.location);
                 }
-                next(); // consume ':'
+                next();
                 auto valueExpr = parseExpression();
                 pairs.emplace_back(std::move(keyExpr), std::move(valueExpr));
 
                 if (cur_.kind == tok_comma)
                 {
-                    next(); // consume ','
+                    next();
                     if (cur_.kind == tok_brace_close)
-                        break; // trailing comma
+                        break;
                     continue;
                 }
                 break;
@@ -1769,7 +1740,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         {
             throw ParseError("expected '}' to close map literal", cur_.location);
         }
-        next(); // consume '}'
+        next();
 
         if (verbose_)
             printf("[parser] parsed map literal with %zu pairs\n", pairs.size());
@@ -1778,17 +1749,16 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         return expr;
     }
 
-    // List literal: list [1, 2, 3] or just [1, 2, 3]
     if (cur_.kind == tok_list)
     {
         SourceLocation listLoc = cur_.location;
-        next(); // consume 'list'
+        next();
 
         if (cur_.kind != tok_square_bracket_open)
         {
             throw ParseError("expected '[' after 'list' keyword", cur_.location);
         }
-        next(); // consume '['
+        next();
 
         std::vector<std::unique_ptr<ExprAST>> elements;
 
@@ -1800,9 +1770,9 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
 
                 if (cur_.kind == tok_comma)
                 {
-                    next(); // consume ','
+                    next();
                     if (cur_.kind == tok_square_bracket_close)
-                        break; // trailing comma
+                        break;
                     continue;
                 }
                 break;
@@ -1813,7 +1783,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         {
             throw ParseError("expected ']' to close list literal", cur_.location);
         }
-        next(); // consume ']'
+        next();
 
         if (verbose_)
             printf("[parser] parsed list literal with %zu elements\n", elements.size());
@@ -1850,7 +1820,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
     if (cur_.kind == tok_paren_open)
     {
         SourceLocation openLoc = cur_.location;
-        next(); // consume '('
+        next();
         bool isCast = isTypeToken(cur_);
         if (isCast)
         {
@@ -1859,7 +1829,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
             {
                 throw ParseError("expected ')' after type in C-style cast", cur_.location);
             }
-            next(); // consume ')'
+            next();
             auto operand = parsePrimary();
             return std::make_unique<CastExpr>(typeName, std::move(operand));
         }
@@ -1870,22 +1840,19 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         return e;
     }
 
-    // Array literal: [1, 2, 3, 4]
     if (cur_.kind == tok_square_bracket_open)
     {
-        next(); // consume '['
+        next();
 
-        // Check if empty
         if (cur_.kind == tok_square_bracket_close)
         {
             next();
-            // Empty array literal
+
             if (verbose_)
                 printf("[parser] parsed empty array literal\n");
             return std::make_unique<ArrayLiteralExpr>(std::vector<std::unique_ptr<ExprAST>>());
         }
 
-        // Parse first element to determine if it's array or map
         auto firstExpr = parseExpression();
 
         if (cur_.kind == tok_colon)
@@ -1893,7 +1860,6 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
             throw ParseError("map literals must use '{ ... }'", cur_.location);
         }
 
-        // Array literal
         std::vector<std::unique_ptr<ExprAST>> elements;
         elements.push_back(std::move(firstExpr));
 
@@ -1901,7 +1867,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         {
             next();
             if (cur_.kind == tok_square_bracket_close)
-                break; // trailing comma
+                break;
             elements.push_back(parseExpression());
         }
 
@@ -1914,41 +1880,39 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
             printf("[parser] parsed array literal with %zu elements\n", elements.size());
         return std::make_unique<ArrayLiteralExpr>(std::move(elements));
     }
-    // Standalone map literal: { "key": value, ... }
+
     if (cur_.kind == tok_brace_open)
     {
         SourceLocation mapLoc = cur_.location;
-        next(); // consume '{'
+        next();
 
-        // Check if this is a map literal by looking for colon after first expression
-        // Peek ahead to determine if this is a map (has "key": pattern) or struct literal
         std::vector<std::pair<std::unique_ptr<ExprAST>, std::unique_ptr<ExprAST>>> pairs;
 
         if (cur_.kind != tok_brace_close)
         {
-            // Parse first key
+
             auto keyExpr = parseExpression();
 
             if (cur_.kind != tok_colon)
             {
                 throw ParseError("expected ':' after map key, or use '[' and ']' for array literals", cur_.location);
             }
-            next(); // consume ':'
+            next();
             auto valueExpr = parseExpression();
             pairs.emplace_back(std::move(keyExpr), std::move(valueExpr));
 
             while (cur_.kind == tok_comma)
             {
-                next(); // consume ','
+                next();
                 if (cur_.kind == tok_brace_close)
-                    break; // trailing comma
+                    break;
 
                 auto key = parseExpression();
                 if (cur_.kind != tok_colon)
                 {
                     throw ParseError("expected ':' after map key", cur_.location);
                 }
-                next(); // consume ':'
+                next();
                 auto value = parseExpression();
                 pairs.emplace_back(std::move(key), std::move(value));
             }
@@ -1958,7 +1922,7 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         {
             throw ParseError("expected '}' to close map literal", cur_.location);
         }
-        next(); // consume '}'
+        next();
 
         if (verbose_)
             printf("[parser] parsed standalone map literal with %zu pairs\n", pairs.size());
@@ -1973,13 +1937,11 @@ std::unique_ptr<ExprAST> Parser::parsePrimary()
         SourceLocation idLoc = cur_.location;
         next();
 
-        // Struct literal
         if (cur_.kind == tok_brace_open)
         {
             return parseStructLiteral(idName);
         }
 
-        // Function call
         if (cur_.text == "(")
         {
             next();
@@ -2039,13 +2001,13 @@ int Parser::getTokPrecedence()
         return 5;
     if (cur_.kind == tok_and)
         return 10;
-    // Bitwise OR (|) - precedence 6 (between || and &&)
+
     if (cur_.kind == tok_bitwise_or)
         return 6;
-    // Bitwise XOR (^) - precedence 7 (between | and &)
+
     if (cur_.kind == tok_bitwise_xor)
         return 7;
-    // Bitwise AND (&) - precedence 8 (between ^ and ==)
+
     if (cur_.kind == tok_ampersand)
         return 8;
     if (cur_.kind == tok_range)
@@ -2054,7 +2016,7 @@ int Parser::getTokPrecedence()
         return 15;
     if (cur_.kind == tok_lt || cur_.kind == tok_gt || cur_.kind == tok_le || cur_.kind == tok_ge)
         return 17;
-    // Shift operators - precedence 18 (between comparisons and +/-)
+
     if (cur_.kind == tok_shift_left || cur_.kind == tok_shift_right)
         return 18;
     if (cur_.kind == tok_plus || cur_.kind == tok_minus)
@@ -2078,7 +2040,7 @@ int Parser::getTokPrecedence()
 
 std::unique_ptr<StructDefStmt> Parser::parseStructDef()
 {
-    next(); // consume 'struct'
+    next();
 
     if (cur_.kind != tok_identifier)
         throw ParseError("expected struct name after 'struct'", cur_.location);
@@ -2109,7 +2071,7 @@ std::unique_ptr<StructDefStmt> Parser::parseStructDef()
     {
         if (cur_.kind == tok_data)
         {
-            next(); // consume 'data'
+            next();
             if (cur_.kind != tok_brace_open)
             {
                 throw ParseError("expected '{' after 'data'", cur_.location);
@@ -2155,7 +2117,7 @@ std::unique_ptr<StructDefStmt> Parser::parseStructDef()
             {
                 throw ParseError("expected '}' to close data block", cur_.location);
             }
-            next(); // consume '}'
+            next();
         }
         else if ((cur_.kind == tok_extend) || (cur_.kind == tok_impl) || isTypeToken(cur_) || cur_.kind == tok_identifier)
         {
@@ -2163,20 +2125,20 @@ std::unique_ptr<StructDefStmt> Parser::parseStructDef()
             {
                 next();
             }
-            // Return type
+
             if (!isTypeToken(cur_) && cur_.kind != tok_identifier)
             {
                 throw ParseError("expected return type for method", cur_.location);
             }
             std::string returnType = parseTypeString();
-            // Method name
+
             if (cur_.kind != tok_identifier)
             {
                 throw ParseError("expected method name after return type", cur_.location);
             }
             auto methodName = cur_.text;
             next();
-            // Parameters
+
             if (cur_.kind != tok_paren_open)
             {
                 throw ParseError("expected '(' after method name", cur_.location);
@@ -2222,13 +2184,13 @@ std::unique_ptr<StructDefStmt> Parser::parseStructDef()
                 throw ParseError("expected '{' to start method body", cur_.location);
             }
             next();
-            // Body
+
             std::vector<std::unique_ptr<StmtAST>> body;
             while (cur_.kind != tok_brace_close)
             {
                 body.push_back(parseStatement());
             }
-            next(); // consume '}'
+            next();
             methods.push_back(std::make_unique<FunctionAST>(methodName, returnType, params, std::move(body)));
         }
         else
@@ -2296,7 +2258,7 @@ std::unique_ptr<StructLiteralExpr> Parser::parseStructLiteral(const std::string 
 
 std::unique_ptr<ImplStmt> Parser::parseImpl()
 {
-    next(); // consume 'impl'
+    next();
 
     if (cur_.kind != tok_identifier)
         throw ParseError("expected struct name after 'impl'", cur_.location);
@@ -2379,7 +2341,7 @@ std::unique_ptr<ImplStmt> Parser::parseImpl()
 
 std::unique_ptr<StaticCallExpr> Parser::parseStaticCall(const std::string &structName)
 {
-    next(); // consume '.'
+    next();
 
     if (cur_.kind != tok_identifier)
         throw ParseError("expected method name after '.'", cur_.location);
@@ -2393,7 +2355,6 @@ std::unique_ptr<StaticCallExpr> Parser::parseStaticCall(const std::string &struc
 
     auto staticCall = std::make_unique<StaticCallExpr>(structName, methodName);
 
-    // Parse arguments
     while (cur_.kind != tok_paren_close && cur_.kind != tok_eof)
     {
         staticCall->args.push_back(parseExpression());

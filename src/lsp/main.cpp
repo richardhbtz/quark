@@ -1,10 +1,3 @@
-/**
- * @file main.cpp
- * @brief Entry point for the Quark Language Server
- * 
- * This is the main executable that provides LSP functionality for the Quark
- * programming language. It communicates with editors via stdio.
- */
 
 #include "lsp/lsp_server.h"
 #include <iostream>
@@ -55,7 +48,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
     
-    // Set stdin/stdout to binary mode on Windows
+    
 #ifdef _WIN32
     _setmode(_fileno(stdin), _O_BINARY);
     _setmode(_fileno(stdout), _O_BINARY);

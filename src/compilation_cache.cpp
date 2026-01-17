@@ -110,7 +110,7 @@ namespace
         return s.substr(start, end - start + 1);
     }
 
-} // namespace
+}
 
 CompilationCache::CompilationCache(const std::filesystem::path &cacheDir)
     : cacheDir_(cacheDir)

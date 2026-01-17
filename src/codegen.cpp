@@ -41,7 +41,6 @@
 #include <llvm-c/BitWriter.h>
 #include <llvm-c/BitReader.h>
 
-// New Pass Manager includes
 #include <llvm/IR/Module.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/Passes/PassBuilder.h>
@@ -151,7 +150,6 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         if (verbose_)
             printf("[codegen] declaring function: %s\n", funcName.c_str());
 
-        // Determine return type
         LLVMTypeRef returnType;
         if (f->returnType == "int")
             returnType = LLVMInt32TypeInContext(llvmCtx_);
@@ -187,7 +185,7 @@ void CodeGen::declareFunctions(const std::vector<FunctionAST *> &allFunctions)
         }
         else
         {
-            // Check if it's a struct type
+
             auto structIt = g_struct_types_.find(f->returnType);
             if (structIt != g_struct_types_.end())
             {
@@ -376,7 +374,7 @@ void CodeGen::generateMainFunction(ProgramAST *program, bool hasUserMain, bool h
         LLVMValueRef putsFn = LLVMGetNamedFunction(module_, "puts");
         for (auto &s : program->stmts)
         {
-            // Skip functions and global variable declarations (which were already processed)
+
             if (!dynamic_cast<FunctionAST *>(s.get()) && !dynamic_cast<VarDeclStmt *>(s.get()))
                 statementCodeGen_->genStmt(s.get(), putsFn);
         }
@@ -482,31 +480,27 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         statementCodeGen_->declareExternFunction(externFunc);
     }
 
-    // Declare extern variables (e.g., GLEW function pointers)
     for (auto *externVar : allExternVariables)
     {
         statementCodeGen_->declareExternVariable(externVar);
     }
 
-    // Declare user functions
     declareFunctions(allFunctions);
 
     if (verbose_)
         printf("[codegen] finished declaring all functions, now processing statements\n");
 
-    // First pass: Process global variable declarations so they're available to functions
     for (auto &s : program->stmts)
     {
         if (auto *varDecl = dynamic_cast<VarDeclStmt *>(s.get()))
         {
-            // Generate global variable declarations first
+
             if (verbose_)
                 printf("[codegen] processing global variable declaration: %s\n", varDecl->name.c_str());
             statementCodeGen_->genStmt(s.get(), putsFn);
         }
     }
 
-    // Second pass: Process functions, extern declarations, etc.
     for (auto &s : program->stmts)
     {
         if (dynamic_cast<FunctionAST *>(s.get()) || dynamic_cast<IncludeStmt *>(s.get()) || dynamic_cast<ExternFunctionAST *>(s.get()) || dynamic_cast<ExternVarAST *>(s.get()) || dynamic_cast<ImplStmt *>(s.get()) || dynamic_cast<StructDefStmt *>(s.get()))
@@ -515,8 +509,7 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         }
         else if (!dynamic_cast<VarDeclStmt *>(s.get()))
         {
-            // Skip non-function statements (except VarDeclStmt which was already processed)
-            // They will be deferred to main generation point.
+
             if (verbose_)
                 printf("[codegen] deferring top-level statement to main\n");
         }
@@ -530,7 +523,6 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         progress_->setProgress(0.8f);
     }
 
-    // Generate main function
     bool hasUserMain = (g_function_map_.find("main") != g_function_map_.end());
     bool hasTopLevelStmts = false;
     for (auto &s : program->stmts)
@@ -582,7 +574,6 @@ void CodeGen::generate(ProgramAST *program, const std::string &outFile)
         throw EnhancedCodeGenError("failed to emit executable", {/*line*/ 1, /*column*/ 1, /*file*/ "<linker>"}, "", ErrorCodes::CODEGEN_FAILED, 1);
     }
 
-    // Complete
     if (progress_)
     {
         progress_->setStage(CompilationProgress::Stage::COMPLETE);
@@ -597,7 +588,6 @@ bool CodeGen::emitExecutable(const std::string &outPath)
     LLVMInitializeNativeAsmPrinter();
     LLVMInitializeNativeAsmParser();
 
-    // Verify the module first
     char *errorMsg = nullptr;
     if (LLVMVerifyModule(module_, LLVMAbortProcessAction, &errorMsg))
     {
@@ -627,8 +617,8 @@ bool CodeGen::emitExecutable(const std::string &outPath)
     LLVMTargetMachineRef tm = LLVMCreateTargetMachine(
         target,
         triple,
-        "", // CPU
-        "", // Features
+        "",
+        "",
         LLVMCodeGenLevelDefault,
         LLVMRelocDefault,
         LLVMCodeModelDefault);
@@ -735,15 +725,15 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                     argstrs.emplace_back("libcmt.lib");
                     argstrs.emplace_back("libvcruntime.lib");
                     argstrs.emplace_back("libucrt.lib");
-                    argstrs.emplace_back("legacy_stdio_definitions.lib"); // For printf, scanf, etc.
+                    argstrs.emplace_back("legacy_stdio_definitions.lib");
                     argstrs.emplace_back("libcurl.lib");
-                    // Static libcurl dependencies
+
                     argstrs.emplace_back("zlib.lib");
                     argstrs.emplace_back("zstd.lib");
                     argstrs.emplace_back("ixwebsocket.lib");
-                    argstrs.emplace_back("mbedtls.lib"); // mbedTLS for IXWebSocket SSL
+                    argstrs.emplace_back("mbedtls.lib");
                     argstrs.emplace_back("mbedx509.lib");
-                    argstrs.emplace_back("mbedcrypto.lib"); // mbedTLS crypto functions
+                    argstrs.emplace_back("mbedcrypto.lib");
                     argstrs.emplace_back("kernel32.lib");
                     argstrs.emplace_back("user32.lib");
                     argstrs.emplace_back("gdi32.lib");
@@ -761,7 +751,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                     argstrs.emplace_back("secur32.lib");
                     argstrs.emplace_back("normaliz.lib");
                     argstrs.emplace_back("winhttp.lib");
-                    argstrs.emplace_back("userenv.lib"); // For GetUserProfileDirectoryW
+                    argstrs.emplace_back("userenv.lib");
                     argstrs.emplace_back("dbghelp.lib");
                     argstrs.emplace_back("psapi.lib");
                     argstrs.emplace_back("/libpath:build/Release");
@@ -775,7 +765,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
                 }
                 else
                 {
-                    // and avoid default libraries.
+
                     argstrs.emplace_back("/ENTRY:main");
                     argstrs.emplace_back("/NODEFAULTLIB");
                 }
@@ -827,7 +817,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
         lldErrMsg = ex.what();
     }
 #elif (__APPLE__)
-    // Mach-O linking for macOS
+
     try
     {
         auto tmpDir = std::filesystem::temp_directory_path();
@@ -950,7 +940,7 @@ bool CodeGen::emitExecutable(const std::string &outPath)
         lldErrMsg = ex.what();
     }
 #else
-    // ELF linking for Linux
+
     try
     {
         auto tmpDir = std::filesystem::temp_directory_path();
@@ -1142,7 +1132,6 @@ void CodeGen::runOptimizationPasses()
 
     llvm::ModulePassManager DefaultMPM = PB.buildPerModuleDefaultPipeline(optLevel);
 
-    // Add the default passes
     MPM.addPass(std::move(DefaultMPM));
 
     if (optimizationLevel_ > 0)
@@ -1159,15 +1148,13 @@ void CodeGen::runOptimizationPasses()
         MPM.addPass(llvm::GlobalOptPass());
 
         llvm::FunctionPassManager FPM;
-        FPM.addPass(llvm::DCEPass()); // Basic dead code elimination
+        FPM.addPass(llvm::DCEPass());
         FPM.addPass(llvm::ADCEPass());
         MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
 
-        // Final global cleanup pass
         MPM.addPass(llvm::GlobalDCEPass());
     }
 
-    // Run the optimization passes
     if (verbose_)
         printf("[codegen] running optimization passes on module\n");
 

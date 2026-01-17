@@ -10,7 +10,6 @@ using namespace ftxui;
 
 FTXUIErrorDisplay::FTXUIErrorDisplay(bool colorEnabled) : colorEnabled_(colorEnabled) {}
 
-// Color scheme
 Color FTXUIErrorDisplay::getErrorColor() const
 {
     return colorEnabled_ ? Color::Red : Color::White;
@@ -97,7 +96,7 @@ Element FTXUIErrorDisplay::highlightSourceLine(const std::string &line, bool isE
 
     while (pos < remaining.length())
     {
-        // Skip whitespace
+
         if (std::isspace(remaining[pos]))
         {
             size_t start = pos;
@@ -107,14 +106,12 @@ Element FTXUIErrorDisplay::highlightSourceLine(const std::string &line, bool isE
             continue;
         }
 
-        // Check for comments
         if (pos + 1 < remaining.length() && remaining[pos] == '/' && remaining[pos + 1] == '/')
         {
             elements.push_back(text(remaining.substr(pos)) | color(getCommentColor()));
             break;
         }
 
-        // Check for strings
         if (remaining[pos] == '"')
         {
             size_t end = pos + 1;
@@ -125,13 +122,12 @@ Element FTXUIErrorDisplay::highlightSourceLine(const std::string &line, bool isE
                 end++;
             }
             if (end < remaining.length())
-                end++; // Include closing quote
+                end++;
             elements.push_back(text(remaining.substr(pos, end - pos)) | color(getStringColor()));
             pos = end;
             continue;
         }
 
-        // Check for numbers
         if (std::isdigit(remaining[pos]))
         {
             size_t start = pos;
@@ -213,7 +209,7 @@ Element FTXUIErrorDisplay::createSourceBlock(const ErrorReporter::ErrorContext &
         if (!lines.empty())
         {
             errorLine = lines.back();
-            // Simple caret creation
+
             std::string normalized = ErrorReporter::normalizeForDisplay(errorLine);
             std::string indicator(normalized.length(), ' ');
             int col = std::max(0, std::min((int)normalized.length(), context.location.column - 1));
@@ -227,7 +223,6 @@ Element FTXUIErrorDisplay::createSourceBlock(const ErrorReporter::ErrorContext &
 
     Elements sourceElements;
 
-    // Find the error line index
     size_t errIdx = lines.empty() ? 0 : lines.size() - 1;
     for (size_t i = 0; i < lineNums.size(); ++i)
     {
@@ -238,7 +233,6 @@ Element FTXUIErrorDisplay::createSourceBlock(const ErrorReporter::ErrorContext &
         }
     }
 
-    // Gutter
     sourceElements.push_back(text("   |") | color(Color::CyanLight));
 
     if (!lines.empty() && errIdx > 0)
@@ -263,7 +257,6 @@ Element FTXUIErrorDisplay::createSourceBlock(const ErrorReporter::ErrorContext &
         sourceElements.push_back(hbox(std::move(lineEls)));
     }
 
-    // Caret line
     if (!caret.empty())
     {
         Elements caretEls;
@@ -294,7 +287,6 @@ Element FTXUIErrorDisplay::createSuggestions(const std::vector<std::string> &sug
     firstLine.push_back(text(suggestions[0]));
     suggestionElements.push_back(hbox(std::move(firstLine)));
 
-    // Additional suggestions
     for (size_t i = 1; i < suggestions.size(); ++i)
     {
         suggestionElements.push_back(text("      " + suggestions[i]));
@@ -328,26 +320,22 @@ void FTXUIErrorDisplay::displayError(const ErrorReporter::ErrorContext &context)
 
     errorElements.push_back(createErrorHeader(context));
 
-    // Location info
     errorElements.push_back(createLocationInfo(context));
 
     errorElements.push_back(createSourceBlock(context));
 
-    // Suggestions
     auto suggestions = createSuggestions(context.suggestions);
     if (suggestions)
     {
         errorElements.push_back(suggestions);
     }
 
-    // Notes
     auto notes = createNotes(context.notes);
     if (notes)
     {
         errorElements.push_back(notes);
     }
 
-    // Render to screen
     auto document = vbox(std::move(errorElements));
     auto screen = Screen::Create(Dimension::Full(), Dimension::Fit(document));
     Render(screen, document);
@@ -381,12 +369,12 @@ void FTXUIErrorDisplay::displaySummary(int errorCount, int warningCount)
     if (!summaryElements.empty())
     {
         Elements finalElements;
-        finalElements.push_back(text("")); // Empty line before
+        finalElements.push_back(text(""));
         for (auto &elem : summaryElements)
         {
             finalElements.push_back(elem);
         }
-        finalElements.push_back(text("")); // Empty line after
+        finalElements.push_back(text(""));
 
         auto document = vbox(std::move(finalElements));
         auto screen = Screen::Create(Dimension::Full(), Dimension::Fit(document));

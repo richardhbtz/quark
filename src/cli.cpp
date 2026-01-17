@@ -18,7 +18,6 @@
 #include <unistd.h>
 #endif
 
-// Global CLI instance
 CLI g_cli;
 
 CLI::CLI() : outputLevel_(OutputLevel::NORMAL), colorEnabled_(true), spinnerActive_(false)
@@ -34,7 +33,7 @@ static bool detectUnicodeSupport()
 #else
     const char *lang = getenv("LANG");
     if (!lang)
-        return true; // assume UTF-8 by default
+        return true;
     std::string s(lang);
     for (auto &c : s)
         c = tolower(c);
@@ -159,7 +158,7 @@ bool CLI::shouldPrint(MessageType type) const
     switch (type)
     {
     case MessageType::ERROR:
-        return true; // Always print errors
+        return true;
     case MessageType::WARNING:
         return outputLevel_ >= OutputLevel::NORMAL;
     case MessageType::SUCCESS:
@@ -439,7 +438,6 @@ void CLI::printHelp()
     printlnRaw("  --cache-dir <dir>         Set custom cache directory (default: .quark_cache)");
 }
 
-// CLIArgs implementation
 CLIArgs CLIArgs::parse(int argc, char **argv)
 {
     CLIArgs args;
@@ -592,7 +590,7 @@ bool CLIArgs::validate(CLI &cli) const
 {
     if (showHelp || showVersion)
     {
-        return true; // These are valid states
+        return true;
     }
 
     if (inputFile.empty())
@@ -615,7 +613,6 @@ void CLIArgs::printDetailedHelp(CLI &cli)
     cli.printHelp();
     cli.printlnRaw("");
 
-    // Detailed compilation process
     cli.printlnRaw(cli.colorize("Compilation Process:", Colors::BOLD));
     cli.printlnRaw("  1. " + cli.colorize("Lexical Analysis", Colors::CYAN) + " - Tokenize source code into meaningful symbols");
     cli.printlnRaw("  2. " + cli.colorize("Syntax Analysis", Colors::CYAN) + " - Parse tokens into Abstract Syntax Tree (AST)");
@@ -623,7 +620,6 @@ void CLIArgs::printDetailedHelp(CLI &cli)
     cli.printlnRaw("  4. " + cli.colorize("Code Generation", Colors::CYAN) + " - Generate LLVM Intermediate Representation");
     cli.printlnRaw("");
 
-    // Advanced usage examples
     cli.printlnRaw(cli.colorize("Advanced Examples:", Colors::BOLD));
     cli.printlnRaw("  " + cli.colorize("Basic compilation:", Colors::BRIGHT_GREEN));
     cli.printlnRaw("    quark hello.k                    # Compile hello.k to hello");
@@ -644,7 +640,6 @@ void CLIArgs::printDetailedHelp(CLI &cli)
     cli.printlnRaw("    quark --libpath libs --link-lib sqlite main.k");
     cli.printlnRaw("");
 
-    // Error handling information
     cli.printlnRaw(cli.colorize("Error Handling:", Colors::BOLD));
     cli.printlnRaw("  Quark provides " + cli.colorize("Rust-style error messages", Colors::BRIGHT_CYAN) + " with:");
     cli.printlnRaw("  • Source code context with line numbers");
@@ -653,7 +648,6 @@ void CLIArgs::printDetailedHelp(CLI &cli)
     cli.printlnRaw("  • Color-coded severity levels");
     cli.printlnRaw("");
 
-    // File types and extensions
     cli.printlnRaw(cli.colorize("Supported Files:", Colors::BOLD));
     cli.printlnRaw("  " + cli.colorize(".k", Colors::BRIGHT_MAGENTA) + "    Quark source files");
     cli.printlnRaw("  " + cli.colorize(".ll", Colors::BRIGHT_MAGENTA) + "   LLVM IR output files");
@@ -664,14 +658,12 @@ void CLIArgs::printDetailedHelp(CLI &cli)
     cli.printlnRaw("  " + cli.colorize("QUARK_VERBOSE", Colors::CYAN) + "    Enable verbose mode by default");
     cli.printlnRaw("");
 
-    // Links and resources
     cli.printlnRaw(cli.colorize("Resources:", Colors::BOLD));
     cli.printlnRaw("  " + cli.colorize("Documentation:", Colors::BRIGHT_BLUE) + " https://github.com/richardhbtz/quark/docs");
     cli.printlnRaw("  " + cli.colorize("Source Code:", Colors::BRIGHT_BLUE) + "   https://github.com/richardhbtz/quark");
     cli.printlnRaw("  " + cli.colorize("Bug Reports:", Colors::BRIGHT_BLUE) + "   https://github.com/richardhbtz/quark/issues");
     cli.printlnRaw("");
 
-    // Version and build info
     cli.printlnRaw(cli.colorize("Build Information:", Colors::BOLD));
     cli.printlnRaw("  Built with LLVM and modern C++20");
     cli.printlnRaw("  Supports Windows, macOS, and Linux");

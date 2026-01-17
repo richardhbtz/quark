@@ -4,7 +4,7 @@
 
 namespace lsp {
 
-// Token helper methods
+
 bool Token::isKeyword() const {
     return kind >= TokenKind::KwModule && kind <= TokenKind::KwChar;
 }
@@ -118,10 +118,10 @@ std::string Token::kindToString(TokenKind kind) {
     return "Unknown";
 }
 
-// Lexer implementation
+
 LspLexer::LspLexer(const std::string& source, const std::string& filename)
     : source_(source), filename_(filename) {
-    // Skip UTF-8 BOM if present
+    
     if (source_.size() >= 3 &&
         static_cast<unsigned char>(source_[0]) == 0xEF &&
         static_cast<unsigned char>(source_[1]) == 0xBB &&
@@ -181,7 +181,7 @@ void LspLexer::skipWhitespace() {
 }
 
 void LspLexer::skipLineComment() {
-    // Skip //
+    
     advance();
     advance();
     while (!isAtEnd() && peek() != '\n') {
@@ -190,7 +190,7 @@ void LspLexer::skipLineComment() {
 }
 
 void LspLexer::skipBlockComment() {
-    // Skip /*
+    
     advance();
     advance();
     
@@ -240,7 +240,7 @@ std::vector<Token> LspLexer::tokenize() {
         }
     }
     
-    // Add EOF token if not present
+    
     if (tokens.empty() || tokens.back().kind != TokenKind::EndOfFile) {
         Token eof;
         eof.kind = TokenKind::EndOfFile;
@@ -263,7 +263,7 @@ Token LspLexer::scanToken() {
     
     char c = advance();
     
-    // Identifiers and keywords
+    
     if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
         while (!isAtEnd() && (std::isalnum(static_cast<unsigned char>(peek())) || peek() == '_')) {
             advance();
@@ -272,7 +272,7 @@ Token LspLexer::scanToken() {
         TokenKind kind = identifierKind(text);
         Token token = makeToken(kind, start, startLine, startCol);
         
-        // Handle bool literals
+        
         if (kind == TokenKind::True) {
             token.numberValue = 1.0;
         } else if (kind == TokenKind::False) {
@@ -282,16 +282,16 @@ Token LspLexer::scanToken() {
         return token;
     }
     
-    // Numbers
+    
     if (std::isdigit(static_cast<unsigned char>(c))) {
-        // Reset position to re-scan from start
+        
         position_ = start;
         column_ = startCol;
         line_ = startLine;
         return scanNumber();
     }
     
-    // Strings
+    
     if (c == '"') {
         position_ = start;
         column_ = startCol;
@@ -299,7 +299,7 @@ Token LspLexer::scanToken() {
         return scanString();
     }
     
-    // Characters
+    
     if (c == '\'') {
         position_ = start;
         column_ = startCol;
@@ -307,7 +307,7 @@ Token LspLexer::scanToken() {
         return scanChar();
     }
     
-    // Two-character tokens
+    
     switch (c) {
         case '.':
             if (peek() == '.') {
@@ -432,7 +432,7 @@ Token LspLexer::scanToken() {
             }
             return makeToken(TokenKind::Caret, start, startLine, startCol);
             
-        // Single character tokens
+        
         case '(': return makeToken(TokenKind::LeftParen, start, startLine, startCol);
         case ')': return makeToken(TokenKind::RightParen, start, startLine, startCol);
         case '{': return makeToken(TokenKind::LeftBrace, start, startLine, startCol);
@@ -445,7 +445,7 @@ Token LspLexer::scanToken() {
         case '~': return makeToken(TokenKind::Tilde, start, startLine, startCol);
     }
     
-    // Unknown character - create error token
+    
     Token error = makeToken(TokenKind::Error, start, startLine, startCol);
     addError("Unexpected character: '" + std::string(1, c) + "'", error.range);
     return error;
@@ -456,17 +456,17 @@ Token LspLexer::scanNumber() {
     int startLine = line_;
     int startCol = column_;
     
-    // Check for hex
+    
     if (peek() == '0' && (peek(1) == 'x' || peek(1) == 'X')) {
-        advance(); // '0'
-        advance(); // 'x'
+        advance(); 
+        advance(); 
         
         while (!isAtEnd() && std::isxdigit(static_cast<unsigned char>(peek()))) {
             advance();
         }
         
         Token token = makeToken(TokenKind::Number, start, startLine, startCol);
-        // Parse hex value
+        
         std::string hex = token.text.substr(2);
         unsigned long long val = 0;
         for (char c : hex) {
@@ -481,14 +481,14 @@ Token LspLexer::scanNumber() {
         return token;
     }
     
-    // Regular number
+    
     bool hasDecimal = false;
     while (!isAtEnd()) {
         char c = peek();
         if (std::isdigit(static_cast<unsigned char>(c))) {
             advance();
         } else if (c == '.' && !hasDecimal) {
-            // Check for range operator
+            
             if (peek(1) == '.') {
                 break;
             }
@@ -499,7 +499,7 @@ Token LspLexer::scanNumber() {
         }
     }
     
-    // Check for float suffix
+    
     bool isFloat = false;
     if (!isAtEnd() && (peek() == 'f' || peek() == 'F')) {
         isFloat = true;
@@ -508,7 +508,7 @@ Token LspLexer::scanNumber() {
     
     Token token = makeToken(isFloat ? TokenKind::Float : TokenKind::Number, start, startLine, startCol);
     
-    // Parse value
+    
     std::string numStr = token.text;
     if (isFloat && !numStr.empty() && (numStr.back() == 'f' || numStr.back() == 'F')) {
         numStr.pop_back();
@@ -527,12 +527,12 @@ Token LspLexer::scanString() {
     int startLine = line_;
     int startCol = column_;
     
-    advance(); // Opening quote
+    advance(); 
     
     std::string value;
     while (!isAtEnd() && peek() != '"') {
         if (peek() == '\n') {
-            // Unterminated string
+            
             break;
         }
         
@@ -559,7 +559,7 @@ Token LspLexer::scanString() {
     }
     
     if (!isAtEnd() && peek() == '"') {
-        advance(); // Closing quote
+        advance(); 
     } else {
         SourceRange range;
         range.startLine = startLine;
@@ -570,7 +570,7 @@ Token LspLexer::scanString() {
     }
     
     Token token = makeToken(TokenKind::String, start, startLine, startCol);
-    token.text = value; // Store the processed string value
+    token.text = value; 
     return token;
 }
 
@@ -579,7 +579,7 @@ Token LspLexer::scanChar() {
     int startLine = line_;
     int startCol = column_;
     
-    advance(); // Opening quote
+    advance(); 
     
     char value = '\0';
     if (!isAtEnd() && peek() != '\'') {
@@ -606,7 +606,7 @@ Token LspLexer::scanChar() {
     }
     
     if (!isAtEnd() && peek() == '\'') {
-        advance(); // Closing quote
+        advance(); 
     } else {
         SourceRange range;
         range.startLine = startLine;
@@ -669,4 +669,4 @@ TokenKind LspLexer::identifierKind(const std::string& text) const {
     return TokenKind::Identifier;
 }
 
-} // namespace lsp
+} 

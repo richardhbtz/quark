@@ -6,7 +6,6 @@ ExternalFunctions::ExternalFunctions(LLVMContextRef ctx, LLVMModuleRef module)
     int32_t_ = LLVMInt32TypeInContext(ctx_);
     int8ptr_t_ = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
 
-    // FILE* type (opaque)
 #ifdef _WIN32
     fileptr_t_ = LLVMPointerType(LLVMStructCreateNamed(ctx_, "struct._iobuf"), 0);
 #else
@@ -29,7 +28,6 @@ LLVMValueRef ExternalFunctions::promoteForVarArg(LLVMBuilderRef builder, LLVMVal
         {
             return LLVMBuildSExt(builder, v, LLVMInt64TypeInContext(ctx_), "sext_i64");
         }
-        // >= 64: leave as-is
     }
     return v;
 }

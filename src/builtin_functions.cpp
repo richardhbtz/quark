@@ -7,7 +7,7 @@
 BuiltinFunctions::BuiltinFunctions(LLVMContextRef ctx, LLVMModuleRef module, LLVMBuilderRef builder)
     : ctx_(ctx), module_(module), builder_(builder)
 {
-    // Initialize LLVM types
+
     int32_t_ = LLVMInt32TypeInContext(ctx_);
     int8ptr_t_ = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
     bool_t_ = LLVMInt1TypeInContext(ctx_);
@@ -15,7 +15,6 @@ BuiltinFunctions::BuiltinFunctions(LLVMContextRef ctx, LLVMModuleRef module, LLV
     float_t_ = LLVMFloatTypeInContext(ctx_);
     double_t_ = LLVMDoubleTypeInContext(ctx_);
 
-    // Declare C library functions
     declareCLibraryFunctions();
 }
 
@@ -26,14 +25,14 @@ void BuiltinFunctions::registerAllBuiltins()
     registerMathFunctions();
     registerFormatFunctions();
     registerMemoryFunctions();
-    // sleep(ms: int) -> void (cross-platform)
+
     registerBuiltin("sleep", void_t_, {int32_t_}, /*isVariadic*/ false,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
                         LLVMValueRef ms = args.empty() ? LLVMConstInt(int32_t_, 0, 0) : args[0];
 
 #if defined(_WIN32)
-                        // Win32 Sleep(DWORD ms)
+
                         LLVMValueRef sleepFn = LLVMGetNamedFunction(module_, "Sleep");
                         if (!sleepFn)
                         {
@@ -44,8 +43,8 @@ void BuiltinFunctions::registerAllBuiltins()
                         LLVMValueRef callArgs[] = {ms};
                         LLVMBuildCall2(builder_, LLVMGlobalGetValueType(sleepFn), sleepFn, callArgs, 1, "");
 #else
-            // POSIX usleep(usec)
-            // Convert ms -> usec (ms * 1000)
+            
+            
             LLVMValueRef thousand = LLVMConstInt(int32_t_, 1000, 0);
             LLVMValueRef usec = LLVMBuildMul(builder_, ms, thousand, "ms_to_usec");
 
@@ -88,7 +87,7 @@ void BuiltinFunctions::registerAllBuiltins()
                             unsigned w = LLVMGetIntTypeWidth(ty);
                             if (w == 1)
                             {
-                                // bool -> int (0/1)
+
                                 return LLVMBuildZExt(builder_, v, int32_t_, "bool_to_int");
                             }
                             if (w == 32)
@@ -111,33 +110,31 @@ void BuiltinFunctions::registerAllBuiltins()
                         {
                             return LLVMBuildFPToSI(builder_, v, int32_t_, "fptosi_i32");
                         }
-                        // Default 0
+
                         return LLVMConstInt(int32_t_, 0, 0);
                     });
-    
-    // Convenient aliases
+
     registerBuiltin("parse_int", int32_t_, {}, /*isVariadic*/ true,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
                         return generateBuiltinCall("to_int", args);
                     });
-    
+
     registerBuiltin("parseInt", int32_t_, {}, /*isVariadic*/ true,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
                         return generateBuiltinCall("to_int", args);
                     });
-    
+
     registerBuiltin("toString", int8ptr_t_, {}, /*isVariadic*/ true,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
                         return generateBuiltinCall("to_string", args);
                     });
-    
+
     registerBuiltin("print", void_t_, {}, /*isVariadic*/ true,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
-                        // If no args: print newline
                         if (args.empty())
                         {
                             LLVMValueRef nl = createStringLiteral("\n");
@@ -185,7 +182,7 @@ void BuiltinFunctions::registerAllBuiltins()
                             }
                             else
                             {
-                                // Fallback: cast to i8*
+
                                 asStr = LLVMBuildPointerCast(builder_, arg, int8ptr_t_, "to_str_any");
                             }
 
@@ -401,7 +398,7 @@ void BuiltinFunctions::registerArrayFunctions()
                         LLVMValueRef off4 = LLVMConstInt(int32_t_, 4, 0);
                         LLVMValueRef sl_idx_data[] = {off4};
                         LLVMValueRef data = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), buff, sl_idx_data, 1, "");
-                        // memcpy out
+
                         LLVMValueRef soff = LLVMBuildMul(builder, sPhi, elemSize, "sl_soff");
                         LLVMValueRef sl_idx_src[] = {soff};
                         LLVMValueRef src = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), arr, sl_idx_src, 1, "sl_src");
@@ -427,11 +424,11 @@ void BuiltinFunctions::registerArrayFunctions()
                         LLVMValueRef off4b = LLVMConstInt(int32_t_, 4, 0);
                         LLVMValueRef ap_idx_data[] = {off4b};
                         LLVMValueRef outData = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), buff, ap_idx_data, 1, "");
-                        // copy old payload
+
                         LLVMValueRef oldBytes = LLVMBuildMul(builder, oldLen, elemSize, "ap_oldb");
                         LLVMValueRef memcpyArgs1[] = {outData, arr, oldBytes};
                         LLVMBuildCall2(builder, LLVMGlobalGetValueType(memcpy_fn_), memcpy_fn_, memcpyArgs1, 3, "");
-                        // write last element bytes
+
                         LLVMValueRef lastOff = LLVMBuildMul(builder, oldLen, elemSize, "ap_last_off");
                         LLVMValueRef ap_idx_dst[] = {lastOff};
                         LLVMValueRef dst = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), outData, ap_idx_dst, 1, "ap_dst");
@@ -461,7 +458,7 @@ void BuiltinFunctions::registerArrayFunctions()
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
                     {
                         LLVMValueRef data = args[0];
-                        // free(data - 4)
+
                         LLVMValueRef minus4 = LLVMConstInt(int32_t_, -4, 1);
                         LLVMValueRef af_idx[] = {minus4};
                         LLVMValueRef base = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), data, af_idx, 1, "arr_base");
@@ -475,8 +472,6 @@ void BuiltinFunctions::registerMemoryFunctions()
     LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
     LLVMTypeRef i64_t = LLVMInt64TypeInContext(ctx_);
 
-    // alloc(size: int) -> void*
-    // Allocates `size` bytes of memory and returns a pointer to it
     registerBuiltin("alloc", i8p, {int32_t_}, false,
                     [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
@@ -485,12 +480,10 @@ void BuiltinFunctions::registerMemoryFunctions()
                             return LLVMConstNull(i8p);
                         }
                         LLVMValueRef size = args[0];
-                        // Call malloc(size)
+
                         return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &size, 1, "alloc_ptr");
                     });
 
-    // free(ptr: void*) -> void
-    // Frees memory previously allocated with alloc
     registerBuiltin("free", void_t_, {i8p}, false,
                     [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
@@ -499,7 +492,7 @@ void BuiltinFunctions::registerMemoryFunctions()
                             return nullptr;
                         }
                         LLVMValueRef ptr = args[0];
-                        // Cast to i8* if needed
+
                         LLVMTypeRef ptrType = LLVMTypeOf(ptr);
                         if (ptrType != i8p)
                         {
@@ -509,12 +502,6 @@ void BuiltinFunctions::registerMemoryFunctions()
                         return nullptr;
                     });
 
-    // alloc_array<T>(count: int) pattern - allocates count * sizeof(T) bytes
-    // This is a generic alloc that takes byte size, user computes element_count * element_size
-    // Example: alloc(100 * 4) for 100 floats (4 bytes each)
-
-    // realloc(ptr: void*, new_size: int) -> void*
-    // Reallocates memory to a new size
     registerBuiltin("realloc", i8p, {i8p, int32_t_}, false,
                     [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
@@ -525,14 +512,12 @@ void BuiltinFunctions::registerMemoryFunctions()
                         LLVMValueRef ptr = args[0];
                         LLVMValueRef newSize = args[1];
 
-                        // Ensure ptr is i8*
                         LLVMTypeRef ptrType = LLVMTypeOf(ptr);
                         if (ptrType != i8p)
                         {
                             ptr = LLVMBuildPointerCast(builder_, ptr, i8p, "realloc_cast");
                         }
 
-                        // Declare realloc if not already declared
                         LLVMValueRef reallocFn = LLVMGetNamedFunction(module_, "realloc");
                         if (!reallocFn)
                         {
@@ -545,8 +530,6 @@ void BuiltinFunctions::registerMemoryFunctions()
                         return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(reallocFn), reallocFn, callArgs, 2, "realloc_ptr");
                     });
 
-    // memset(ptr: void*, value: int, size: int) -> void*
-    // Sets `size` bytes of memory starting at `ptr` to `value`
     registerBuiltin("memset", i8p, {i8p, int32_t_, int32_t_}, false,
                     [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
@@ -558,7 +541,6 @@ void BuiltinFunctions::registerMemoryFunctions()
                         LLVMValueRef value = args[1];
                         LLVMValueRef size = args[2];
 
-                        // Ensure ptr is i8*
                         LLVMTypeRef ptrType = LLVMTypeOf(ptr);
                         if (ptrType != i8p)
                         {
@@ -569,8 +551,6 @@ void BuiltinFunctions::registerMemoryFunctions()
                         return LLVMBuildCall2(builder_, LLVMGlobalGetValueType(memset_fn_), memset_fn_, callArgs, 3, "memset_res");
                     });
 
-    // memcpy(dest: void*, src: void*, size: int) -> void*
-    // Copies `size` bytes from `src` to `dest`
     registerBuiltin("memcpy", i8p, {i8p, i8p, int32_t_}, false,
                     [this, i8p](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) -> LLVMValueRef
                     {
@@ -582,7 +562,6 @@ void BuiltinFunctions::registerMemoryFunctions()
                         LLVMValueRef src = args[1];
                         LLVMValueRef size = args[2];
 
-                        // Ensure pointers are i8*
                         LLVMTypeRef destType = LLVMTypeOf(dest);
                         LLVMTypeRef srcType = LLVMTypeOf(src);
                         if (destType != i8p)
@@ -601,161 +580,200 @@ void BuiltinFunctions::registerMemoryFunctions()
 
 void BuiltinFunctions::registerMathFunctions()
 {
-    // Helper lambda to declare and call a C math function
-    auto declareMathFunc = [this](const char* name, LLVMTypeRef retType, const std::vector<LLVMTypeRef>& paramTypes) -> LLVMValueRef {
+
+    auto declareMathFunc = [this](const char *name, LLVMTypeRef retType, const std::vector<LLVMTypeRef> &paramTypes) -> LLVMValueRef
+    {
         LLVMValueRef fn = LLVMGetNamedFunction(module_, name);
-        if (!fn) {
-            LLVMTypeRef fnType = LLVMFunctionType(retType, 
-                paramTypes.empty() ? nullptr : const_cast<LLVMTypeRef*>(paramTypes.data()), 
-                static_cast<unsigned>(paramTypes.size()), 0);
+        if (!fn)
+        {
+            LLVMTypeRef fnType = LLVMFunctionType(retType,
+                                                  paramTypes.empty() ? nullptr : const_cast<LLVMTypeRef *>(paramTypes.data()),
+                                                  static_cast<unsigned>(paramTypes.size()), 0);
             fn = LLVMAddFunction(module_, name, fnType);
         }
         return fn;
     };
-    
-    // Trigonometric functions
+
     registerBuiltin("sin", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef sinFn = declareMathFunc("sin", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sinFn), sinFn, const_cast<LLVMValueRef*>(&args[0]), 1, "sin_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sinFn), sinFn, const_cast<LLVMValueRef *>(&args[0]), 1, "sin_call");
                     });
-    
+
     registerBuiltin("cos", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef cosFn = declareMathFunc("cos", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(cosFn), cosFn, const_cast<LLVMValueRef*>(&args[0]), 1, "cos_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(cosFn), cosFn, const_cast<LLVMValueRef *>(&args[0]), 1, "cos_call");
                     });
-    
+
     registerBuiltin("tan", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef tanFn = declareMathFunc("tan", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(tanFn), tanFn, const_cast<LLVMValueRef*>(&args[0]), 1, "tan_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(tanFn), tanFn, const_cast<LLVMValueRef *>(&args[0]), 1, "tan_call");
                     });
-    
+
     registerBuiltin("asin", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef asinFn = declareMathFunc("asin", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(asinFn), asinFn, const_cast<LLVMValueRef*>(&args[0]), 1, "asin_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(asinFn), asinFn, const_cast<LLVMValueRef *>(&args[0]), 1, "asin_call");
                     });
-    
+
     registerBuiltin("acos", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef acosFn = declareMathFunc("acos", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(acosFn), acosFn, const_cast<LLVMValueRef*>(&args[0]), 1, "acos_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(acosFn), acosFn, const_cast<LLVMValueRef *>(&args[0]), 1, "acos_call");
                     });
-    
+
     registerBuiltin("atan", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef atanFn = declareMathFunc("atan", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(atanFn), atanFn, const_cast<LLVMValueRef*>(&args[0]), 1, "atan_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(atanFn), atanFn, const_cast<LLVMValueRef *>(&args[0]), 1, "atan_call");
                     });
-    
+
     registerBuiltin("atan2", double_t_, {double_t_, double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 2) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 2)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef atan2Fn = declareMathFunc("atan2", double_t_, {double_t_, double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(atan2Fn), atan2Fn, const_cast<LLVMValueRef*>(args.data()), 2, "atan2_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(atan2Fn), atan2Fn, const_cast<LLVMValueRef *>(args.data()), 2, "atan2_call");
                     });
-    
+
     registerBuiltin("sinh", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef sinhFn = declareMathFunc("sinh", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sinhFn), sinhFn, const_cast<LLVMValueRef*>(&args[0]), 1, "sinh_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sinhFn), sinhFn, const_cast<LLVMValueRef *>(&args[0]), 1, "sinh_call");
                     });
-    
+
     registerBuiltin("cosh", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef coshFn = declareMathFunc("cosh", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(coshFn), coshFn, const_cast<LLVMValueRef*>(&args[0]), 1, "cosh_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(coshFn), coshFn, const_cast<LLVMValueRef *>(&args[0]), 1, "cosh_call");
                     });
-    
+
     registerBuiltin("tanh", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef tanhFn = declareMathFunc("tanh", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(tanhFn), tanhFn, const_cast<LLVMValueRef*>(&args[0]), 1, "tanh_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(tanhFn), tanhFn, const_cast<LLVMValueRef *>(&args[0]), 1, "tanh_call");
                     });
-    
-    // Basic math operations
+
     registerBuiltin("sqrt", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef sqrtFn = declareMathFunc("sqrt", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sqrtFn), sqrtFn, const_cast<LLVMValueRef*>(&args[0]), 1, "sqrt_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(sqrtFn), sqrtFn, const_cast<LLVMValueRef *>(&args[0]), 1, "sqrt_call");
                     });
-    
+
     registerBuiltin("pow", double_t_, {double_t_, double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 2) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 2)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef powFn = declareMathFunc("pow", double_t_, {double_t_, double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(powFn), powFn, const_cast<LLVMValueRef*>(args.data()), 2, "pow_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(powFn), powFn, const_cast<LLVMValueRef *>(args.data()), 2, "pow_call");
                     });
-    
+
     registerBuiltin("log", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef logFn = declareMathFunc("log", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(logFn), logFn, const_cast<LLVMValueRef*>(&args[0]), 1, "log_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(logFn), logFn, const_cast<LLVMValueRef *>(&args[0]), 1, "log_call");
                     });
-    
+
     registerBuiltin("log10", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef log10Fn = declareMathFunc("log10", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(log10Fn), log10Fn, const_cast<LLVMValueRef*>(&args[0]), 1, "log10_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(log10Fn), log10Fn, const_cast<LLVMValueRef *>(&args[0]), 1, "log10_call");
                     });
-    
+
     registerBuiltin("exp", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef expFn = declareMathFunc("exp", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(expFn), expFn, const_cast<LLVMValueRef*>(&args[0]), 1, "exp_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(expFn), expFn, const_cast<LLVMValueRef *>(&args[0]), 1, "exp_call");
                     });
-    
+
     registerBuiltin("abs", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef fabsFn = declareMathFunc("fabs", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fabsFn), fabsFn, const_cast<LLVMValueRef*>(&args[0]), 1, "fabs_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fabsFn), fabsFn, const_cast<LLVMValueRef *>(&args[0]), 1, "fabs_call");
                     });
-    
+
     registerBuiltin("floor", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef floorFn = declareMathFunc("floor", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(floorFn), floorFn, const_cast<LLVMValueRef*>(&args[0]), 1, "floor_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(floorFn), floorFn, const_cast<LLVMValueRef *>(&args[0]), 1, "floor_call");
                     });
-    
+
     registerBuiltin("ceil", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef ceilFn = declareMathFunc("ceil", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(ceilFn), ceilFn, const_cast<LLVMValueRef*>(&args[0]), 1, "ceil_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(ceilFn), ceilFn, const_cast<LLVMValueRef *>(&args[0]), 1, "ceil_call");
                     });
-    
+
     registerBuiltin("round", double_t_, {double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 1) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 1)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef roundFn = declareMathFunc("round", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(roundFn), roundFn, const_cast<LLVMValueRef*>(&args[0]), 1, "round_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(roundFn), roundFn, const_cast<LLVMValueRef *>(&args[0]), 1, "round_call");
                     });
-    
+
     registerBuiltin("fmod", double_t_, {double_t_, double_t_}, false,
-                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args) {
-                        if (args.size() != 2) return LLVMConstReal(double_t_, 0.0);
+                    [this, declareMathFunc](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
+                    {
+                        if (args.size() != 2)
+                            return LLVMConstReal(double_t_, 0.0);
                         LLVMValueRef fmodFn = declareMathFunc("fmod", double_t_, {double_t_, double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fmodFn), fmodFn, const_cast<LLVMValueRef*>(args.data()), 2, "fmod_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fmodFn), fmodFn, const_cast<LLVMValueRef *>(args.data()), 2, "fmod_call");
                     });
-    
-    // Integer/Float specific abs, min, max, clamp functions
+
     registerBuiltin("abs_i32", int32_t_, {int32_t_}, false,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
                     {
@@ -791,7 +809,6 @@ void BuiltinFunctions::registerMathFunctions()
                         return LLVMBuildSelect(builder_, isNeg, neg, x, "abs_f64");
                     });
 
-    // Integer min/max
     registerBuiltin("min_i32", int32_t_, {int32_t_, int32_t_}, false,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
                     {
@@ -920,17 +937,16 @@ void BuiltinFunctions::registerMathFunctions()
                         return generateBuiltinCall("max_f64", dargs);
                     });
 
-    // Clamp helpers
     registerBuiltin("clamp_i32", int32_t_, {int32_t_, int32_t_, int32_t_}, false,
                     [this](LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
                     {
                         if (args.size() != 3)
                             return LLVMConstInt(int32_t_, 0, 0);
                         LLVMValueRef x = args[0], lo = args[1], hi = args[2];
-                        // t = max(x, lo)
+
                         LLVMValueRef ge_lo = LLVMBuildICmp(builder_, LLVMIntSGE, x, lo, "ge_lo");
                         LLVMValueRef t = LLVMBuildSelect(builder_, ge_lo, x, lo, "t");
-                        // r = min(t, hi)
+
                         LLVMValueRef le_hi = LLVMBuildICmp(builder_, LLVMIntSLE, t, hi, "le_hi");
                         return LLVMBuildSelect(builder_, le_hi, t, hi, "clamp_i32");
                     });
@@ -960,7 +976,7 @@ void BuiltinFunctions::registerMathFunctions()
                         hi = toF64(hi, "hi");
                         LLVMValueRef ge_lo = LLVMBuildFCmp(builder_, LLVMRealOGE, x, lo, "oge_lo");
                         LLVMValueRef t = LLVMBuildSelect(builder_, ge_lo, x, lo, "t");
-                        // r = min(t, hi)
+
                         LLVMValueRef le_hi = LLVMBuildFCmp(builder_, LLVMRealOLE, t, hi, "ole_hi");
                         return LLVMBuildSelect(builder_, le_hi, t, hi, "clamp_f64");
                     });
@@ -1046,7 +1062,7 @@ LLVMValueRef BuiltinFunctions::generateBuiltinCall(const std::string &functionNa
     auto it = builtins_.find(functionName);
     if (it == builtins_.end())
     {
-        return nullptr; // Not a built-in function
+        return nullptr;
     }
 
     return it->second->implementation(builder_, args);
@@ -1098,14 +1114,12 @@ void BuiltinFunctions::registerTypesWithExpressionCodeGen(ExpressionCodeGen *exp
         if (!bi)
             continue;
 
-        // Special handling for str_split which returns str[]
         if (name == "str_split")
         {
             exprGen->declareFunctionType(name, QuarkType::Array, SourceLocation(), QuarkType::String, 0);
             continue;
         }
 
-        // Memory functions return void* (Pointer type)
         if (name == "alloc" || name == "realloc" || name == "memset" || name == "memcpy")
         {
             exprGen->declareFunctionType(name, QuarkType::Pointer, SourceLocation());
@@ -1153,7 +1167,6 @@ void BuiltinFunctions::declareCLibraryFunctions()
         malloc_fn_ = LLVMAddFunction(module_, "malloc", funcType);
     }
 
-    // free: void free(void* ptr)
     {
         LLVMTypeRef paramTypes[] = {int8ptr_t_};
         LLVMTypeRef funcType = LLVMFunctionType(void_t_, paramTypes, 1, 0);
@@ -1238,7 +1251,6 @@ void BuiltinFunctions::declareCLibraryFunctions()
         atoi_fn_ = LLVMAddFunction(module_, "atoi", funcType);
     }
 
-    // strncmp: int strncmp(const char* s1, const char* s2, size_t n)
     {
         LLVMTypeRef paramTypes[] = {int8ptr_t_, int8ptr_t_, int32_t_};
         LLVMTypeRef funcType = LLVMFunctionType(int32_t_, paramTypes, 3, 0);
@@ -1265,12 +1277,10 @@ LLVMValueRef BuiltinFunctions::intToString(LLVMValueRef intVal)
     LLVMTypeRef snprintfTy = LLVMGlobalGetValueType(snprintf_fn_);
     LLVMValueRef needed = LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, sizeArgs, 4, "int_str_size");
 
-    // Allocate size + 1
     LLVMValueRef one = LLVMConstInt(int32_t_, 1, 0);
     LLVMValueRef allocSize = LLVMBuildAdd(builder_, needed, one, "int_str_alloc");
     LLVMValueRef buff = allocateString(allocSize);
 
-    // Write into buffer
     LLVMValueRef writeArgs[] = {buff, allocSize, fmt, intVal};
     LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, writeArgs, 4, "");
     return buff;
@@ -1280,17 +1290,17 @@ LLVMValueRef BuiltinFunctions::boolToString(LLVMValueRef boolVal)
 {
     LLVMValueRef trueStr = createStringLiteral("true");
     LLVMValueRef falseStr = createStringLiteral("false");
-    // Compute lengths
+
     LLVMValueRef lenTrue = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &trueStr, 1, "len_true");
     LLVMValueRef lenFalse = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &falseStr, 1, "len_false");
-    // Select len and src
+
     LLVMValueRef selLen = LLVMBuildSelect(builder_, boolVal, lenTrue, lenFalse, "sel_len");
     LLVMValueRef selSrc = LLVMBuildSelect(builder_, boolVal, trueStr, falseStr, "sel_src");
-    // Allocate len+1
+
     LLVMValueRef one = LLVMConstInt(int32_t_, 1, 0);
     LLVMValueRef allocSize = LLVMBuildAdd(builder_, selLen, one, "alloc_bool");
     LLVMValueRef dst = allocateString(allocSize);
-    // Copy
+
     LLVMValueRef cpyArgs[] = {dst, selSrc};
     LLVMBuildCall2(builder_, LLVMGlobalGetValueType(strcpy_fn_), strcpy_fn_, cpyArgs, 2, "");
     return dst;
@@ -1308,12 +1318,10 @@ LLVMValueRef BuiltinFunctions::floatToString(LLVMValueRef floatVal)
     LLVMTypeRef snprintfTy = LLVMGlobalGetValueType(snprintf_fn_);
     LLVMValueRef needed = LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, sizeArgs, 4, "float_str_size");
 
-    // Allocate size + 1
     LLVMValueRef one = LLVMConstInt(int32_t_, 1, 0);
     LLVMValueRef allocSize = LLVMBuildAdd(builder_, needed, one, "float_str_alloc");
     LLVMValueRef buff = allocateString(allocSize);
 
-    // Write into buffer
     LLVMValueRef writeArgs[] = {buff, allocSize, fmt, doubleVal};
     LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, writeArgs, 4, "");
     return buff;
@@ -1328,18 +1336,15 @@ LLVMValueRef BuiltinFunctions::doubleToString(LLVMValueRef doubleVal)
     LLVMTypeRef snprintfTy = LLVMGlobalGetValueType(snprintf_fn_);
     LLVMValueRef needed = LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, sizeArgs, 4, "double_str_size");
 
-    // Allocate size + 1
     LLVMValueRef one = LLVMConstInt(int32_t_, 1, 0);
     LLVMValueRef allocSize = LLVMBuildAdd(builder_, needed, one, "double_str_alloc");
     LLVMValueRef buff = allocateString(allocSize);
 
-    // Write into buffer
     LLVMValueRef writeArgs[] = {buff, allocSize, fmt, doubleVal};
     LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, writeArgs, 4, "");
     return buff;
 }
 
-// Core format implementation
 LLVMValueRef BuiltinFunctions::formatString(LLVMBuilderRef builder, const std::vector<LLVMValueRef> &args)
 {
     if (args.empty())
@@ -1399,7 +1404,7 @@ LLVMValueRef BuiltinFunctions::formatString(LLVMBuilderRef builder, const std::v
         }
         else
         {
-            // Fallback: cast to i8*
+
             asStr = LLVMBuildPointerCast(builder, v, int8ptr_t_, "to_str_any");
         }
         sizeCallArgs.push_back(asStr);
@@ -1409,7 +1414,6 @@ LLVMValueRef BuiltinFunctions::formatString(LLVMBuilderRef builder, const std::v
     LLVMTypeRef snprintfTy = LLVMGlobalGetValueType(snprintf_fn_);
     LLVMValueRef needed = LLVMBuildCall2(builder, snprintfTy, snprintf_fn_, sizeCallArgs.data(), (unsigned)sizeCallArgs.size(), "fmt_size");
 
-    // Allocate buffer (needed + 1)
     LLVMValueRef one = LLVMConstInt(int32_t_, 1, 0);
     LLVMValueRef allocSize = LLVMBuildAdd(builder, needed, one, "fmt_alloc");
     LLVMValueRef buffer = allocateString(allocSize);
@@ -1447,20 +1451,16 @@ LLVMValueRef BuiltinFunctions::stringSlice(LLVMBuilderRef builder, const std::ve
 
     LLVMValueRef length = LLVMBuildSub(builder, end, start, "slice_len");
 
-    // Add 1 for null terminator
     LLVMValueRef allocSize = LLVMBuildAdd(builder, length, LLVMConstInt(int32_t_, 1, 0), "alloc_size");
 
-    // Allocate memory for result
     LLVMValueRef result = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &allocSize, 1, "slice_result");
 
     LLVMValueRef ss_idx_src[] = {start};
     LLVMValueRef srcPtr = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), str, ss_idx_src, 1, "src_ptr");
 
-    // Copy substring using memcpy
     LLVMValueRef copyArgs[] = {result, srcPtr, length};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(memcpy_fn_), memcpy_fn_, copyArgs, 3, "");
 
-    // Null terminate the result
     LLVMValueRef ss_idx_end[] = {length};
     LLVMValueRef nullPos = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), result, ss_idx_end, 1, "null_pos");
     LLVMBuildStore(builder, LLVMConstInt(LLVMInt8TypeInContext(ctx_), 0, 0), nullPos);
@@ -1476,21 +1476,17 @@ LLVMValueRef BuiltinFunctions::stringConcat(LLVMBuilderRef builder, const std::v
     LLVMValueRef str1 = args[0];
     LLVMValueRef str2 = args[1];
 
-    // Get lengths of both strings
     LLVMValueRef len1 = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &str1, 1, "len1");
     LLVMValueRef len2 = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &str2, 1, "len2");
 
     LLVMValueRef totalLen = LLVMBuildAdd(builder, len1, len2, "total_len");
     LLVMValueRef allocSize = LLVMBuildAdd(builder, totalLen, LLVMConstInt(int32_t_, 1, 0), "alloc_size");
 
-    // Allocate memory for result
     LLVMValueRef result = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &allocSize, 1, "concat_result");
 
-    // Copy first string
     LLVMValueRef strcpyArgs[] = {result, str1};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(strcpy_fn_), strcpy_fn_, strcpyArgs, 2, "");
 
-    // Concatenate second string
     LLVMValueRef strcatArgs[] = {result, str2};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(strcat_fn_), strcat_fn_, strcatArgs, 2, "");
 
@@ -1505,15 +1501,12 @@ LLVMValueRef BuiltinFunctions::stringFind(LLVMBuilderRef builder, const std::vec
     LLVMValueRef haystack = args[0];
     LLVMValueRef needle = args[1];
 
-    // Use strstr to find substring
     LLVMValueRef strstrArgs[] = {haystack, needle};
     LLVMValueRef found = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strstr_fn_), strstr_fn_, strstrArgs, 2, "strstr_result");
 
-    // Check if found (not NULL)
     LLVMValueRef nullPtr = LLVMConstNull(int8ptr_t_);
     LLVMValueRef isFound = LLVMBuildICmp(builder, LLVMIntNE, found, nullPtr, "is_found");
 
-    // Return boolean presence
     return isFound;
 }
 
@@ -1526,7 +1519,6 @@ LLVMValueRef BuiltinFunctions::stringReplace(LLVMBuilderRef builder, const std::
     LLVMValueRef oldStr = args[1];
     LLVMValueRef newStr = args[2];
 
-    // Get string lengths
     LLVMValueRef strLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &str, 1, "str_len");
     LLVMValueRef oldLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &oldStr, 1, "old_len");
     LLVMValueRef newLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &newStr, 1, "new_len");
@@ -1568,11 +1560,9 @@ LLVMValueRef BuiltinFunctions::stringReplace(LLVMBuilderRef builder, const std::
 
     LLVMBuildBr(builder, loopBB);
 
-    // Search loop
     LLVMPositionBuilderAtEnd(builder, loopBB);
     LLVMValueRef searchPhi = LLVMBuildPhi(builder, int8ptr_t_, "search_phi");
 
-    // Search for the old string
     LLVMValueRef searchArgs[] = {searchPhi, oldStr};
     LLVMValueRef foundPos = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strstr_fn_), strstr_fn_, searchArgs, 2, "found_pos");
 
@@ -1591,19 +1581,15 @@ LLVMValueRef BuiltinFunctions::stringReplace(LLVMBuilderRef builder, const std::
     LLVMValueRef copyPrefixArgs[] = {tempBuf, searchPhi, prefixLen};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(memcpy_fn_), memcpy_fn_, copyPrefixArgs, 3, "");
 
-    // Null terminate temp buffer
     LLVMValueRef sr_idx_end[] = {prefixLen};
     LLVMValueRef tempEnd = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), tempBuf, sr_idx_end, 1, "temp_end");
     LLVMBuildStore(builder, LLVMConstInt(LLVMInt8TypeInContext(ctx_), 0, 0), tempEnd);
 
-    // Append prefix to result
     LLVMValueRef appendPrefixArgs[] = {result, tempBuf};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(strcat_fn_), strcat_fn_, appendPrefixArgs, 2, "");
 
-    // Free temporary buffer
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(free_fn_), free_fn_, &tempBuf, 1, "");
 
-    // Append replacement string
     LLVMValueRef appendNewArgs[] = {result, newStr};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(strcat_fn_), strcat_fn_, appendNewArgs, 2, "");
 
@@ -1619,7 +1605,6 @@ LLVMValueRef BuiltinFunctions::stringReplace(LLVMBuilderRef builder, const std::
     LLVMBuildStore(builder, result, resultAlloca);
     LLVMBuildBr(builder, afterBB);
 
-    // Set up phi node values
     LLVMValueRef searchPhiValues[] = {searchStart, nextSearch};
     LLVMBasicBlockRef searchPhiBlocks[] = {replaceBB, foundBB};
     LLVMAddIncoming(searchPhi, searchPhiValues, searchPhiBlocks, 2);
@@ -1644,19 +1629,15 @@ LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::ve
     LLVMValueRef str = args[0];
     LLVMValueRef delimiter = args[1];
 
-    // Get delimiter length
     LLVMValueRef delimLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &delimiter, 1, "delim_len");
 
-    // Get the current function and create basic blocks
     LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder);
     LLVMValueRef function = LLVMGetBasicBlockParent(currentBB);
 
-    // First pass: count occurrences of delimiter to determine array size
     LLVMBasicBlockRef countLoopBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_count_loop");
     LLVMBasicBlockRef countFoundBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_count_found");
     LLVMBasicBlockRef countDoneBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_count_done");
 
-    // Initialize count to 1 (minimum number of parts)
     LLVMValueRef countAlloca = LLVMBuildAlloca(builder, int32_t_, "split_count");
     LLVMBuildStore(builder, LLVMConstInt(int32_t_, 1, 0), countAlloca);
     LLVMValueRef searchPtrAlloca = LLVMBuildAlloca(builder, int8ptr_t_, "search_ptr");
@@ -1664,7 +1645,6 @@ LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::ve
 
     LLVMBuildBr(builder, countLoopBB);
 
-    // Count loop
     LLVMPositionBuilderAtEnd(builder, countLoopBB);
     LLVMValueRef searchPtr = LLVMBuildLoad2(builder, int8ptr_t_, searchPtrAlloca, "cur_search");
     LLVMValueRef searchArgs[] = {searchPtr, delimiter};
@@ -1673,43 +1653,36 @@ LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::ve
     LLVMValueRef isFound = LLVMBuildICmp(builder, LLVMIntNE, foundPos, nullPtr, "is_found");
     LLVMBuildCondBr(builder, isFound, countFoundBB, countDoneBB);
 
-    // Found delimiter - increment count and advance search pointer
     LLVMPositionBuilderAtEnd(builder, countFoundBB);
     LLVMValueRef oldCount = LLVMBuildLoad2(builder, int32_t_, countAlloca, "old_count");
     LLVMValueRef newCount = LLVMBuildAdd(builder, oldCount, LLVMConstInt(int32_t_, 1, 0), "new_count");
     LLVMBuildStore(builder, newCount, countAlloca);
-    // Advance past delimiter
+
     LLVMValueRef sp_idx_next[] = {delimLen};
     LLVMValueRef nextPtr = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), foundPos, sp_idx_next, 1, "next_ptr");
     LLVMBuildStore(builder, nextPtr, searchPtrAlloca);
     LLVMBuildBr(builder, countLoopBB);
 
-    // Done counting
     LLVMPositionBuilderAtEnd(builder, countDoneBB);
     LLVMValueRef totalCount = LLVMBuildLoad2(builder, int32_t_, countAlloca, "total_count");
 
-    // Allocate array: (count + 1) * sizeof(char*) for null terminator, plus 4 bytes for length header
-    LLVMValueRef ptrSize = LLVMConstInt(int32_t_, 8, 0); // sizeof(char*)
+    LLVMValueRef ptrSize = LLVMConstInt(int32_t_, 8, 0);
     LLVMValueRef countPlusOne = LLVMBuildAdd(builder, totalCount, LLVMConstInt(int32_t_, 1, 0), "count_plus_one");
     LLVMValueRef arrayBytes = LLVMBuildMul(builder, countPlusOne, ptrSize, "array_bytes");
     LLVMValueRef totalBytes = LLVMBuildAdd(builder, arrayBytes, LLVMConstInt(int32_t_, 4, 0), "total_bytes");
     LLVMValueRef rawBuffer = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &totalBytes, 1, "split_buf");
 
-    // Store length in header (first 4 bytes)
     LLVMValueRef headerPtr = LLVMBuildPointerCast(builder, rawBuffer, LLVMPointerType(int32_t_, 0), "header_ptr");
     LLVMBuildStore(builder, totalCount, headerPtr);
 
-    // Get pointer to data (after header)
     LLVMValueRef sp_idx_data[] = {LLVMConstInt(int32_t_, 4, 0)};
     LLVMValueRef dataPtr = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), rawBuffer, sp_idx_data, 1, "data_ptr");
     LLVMValueRef resultArray = LLVMBuildPointerCast(builder, dataPtr, LLVMPointerType(int8ptr_t_, 0), "result_array");
 
-    // Second pass: actually split the string
     LLVMBasicBlockRef splitLoopBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_loop");
     LLVMBasicBlockRef splitFoundBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_found");
     LLVMBasicBlockRef splitDoneBB = LLVMAppendBasicBlockInContext(ctx_, function, "split_done");
 
-    // Reset search pointer and initialize index
     LLVMBuildStore(builder, str, searchPtrAlloca);
     LLVMValueRef indexAlloca = LLVMBuildAlloca(builder, int32_t_, "split_index");
     LLVMBuildStore(builder, LLVMConstInt(int32_t_, 0, 0), indexAlloca);
@@ -1718,7 +1691,6 @@ LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::ve
 
     LLVMBuildBr(builder, splitLoopBB);
 
-    // Split loop
     LLVMPositionBuilderAtEnd(builder, splitLoopBB);
     LLVMValueRef curSearchPtr = LLVMBuildLoad2(builder, int8ptr_t_, searchPtrAlloca, "cur_search2");
     LLVMValueRef searchArgs2[] = {curSearchPtr, delimiter};
@@ -1726,37 +1698,35 @@ LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::ve
     LLVMValueRef isFound2 = LLVMBuildICmp(builder, LLVMIntNE, foundPos2, nullPtr, "is_found2");
     LLVMBuildCondBr(builder, isFound2, splitFoundBB, splitDoneBB);
 
-    // Found delimiter - extract substring
     LLVMPositionBuilderAtEnd(builder, splitFoundBB);
     LLVMValueRef startPtr = LLVMBuildLoad2(builder, int8ptr_t_, startPtrAlloca, "start");
-    // Calculate length of this segment
+
     LLVMValueRef segLen64 = LLVMBuildPtrDiff2(builder, LLVMInt8TypeInContext(ctx_), foundPos2, startPtr, "seg_len64");
     LLVMValueRef segLen = LLVMBuildTrunc(builder, segLen64, int32_t_, "seg_len");
-    // Allocate and copy segment
+
     LLVMValueRef segSize = LLVMBuildAdd(builder, segLen, LLVMConstInt(int32_t_, 1, 0), "seg_size");
     LLVMValueRef segment = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &segSize, 1, "segment");
     LLVMValueRef memcpyArgs[] = {segment, startPtr, segLen};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(memcpy_fn_), memcpy_fn_, memcpyArgs, 3, "");
-    // Null terminate
+
     LLVMValueRef sp_idx_end[] = {segLen};
     LLVMValueRef segEnd = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), segment, sp_idx_end, 1, "seg_end");
     LLVMBuildStore(builder, LLVMConstInt(LLVMInt8TypeInContext(ctx_), 0, 0), segEnd);
-    // Store in result array
+
     LLVMValueRef curIndex = LLVMBuildLoad2(builder, int32_t_, indexAlloca, "cur_idx");
     LLVMValueRef sp_idx_arr[] = {curIndex};
     LLVMValueRef arrSlot = LLVMBuildGEP2(builder, int8ptr_t_, resultArray, sp_idx_arr, 1, "arr_slot");
     LLVMBuildStore(builder, segment, arrSlot);
-    // Increment index
+
     LLVMValueRef newIndex = LLVMBuildAdd(builder, curIndex, LLVMConstInt(int32_t_, 1, 0), "new_idx");
     LLVMBuildStore(builder, newIndex, indexAlloca);
-    // Advance pointers past delimiter
+
     LLVMValueRef sp_idx_next2[] = {delimLen};
     LLVMValueRef nextStart = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), foundPos2, sp_idx_next2, 1, "next_start");
     LLVMBuildStore(builder, nextStart, searchPtrAlloca);
     LLVMBuildStore(builder, nextStart, startPtrAlloca);
     LLVMBuildBr(builder, splitLoopBB);
 
-    // Done splitting - add final segment
     LLVMPositionBuilderAtEnd(builder, splitDoneBB);
     LLVMValueRef finalStart = LLVMBuildLoad2(builder, int8ptr_t_, startPtrAlloca, "final_start");
     LLVMValueRef finalLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &finalStart, 1, "final_len");
@@ -1764,12 +1734,12 @@ LLVMValueRef BuiltinFunctions::stringSplit(LLVMBuilderRef builder, const std::ve
     LLVMValueRef finalSeg = LLVMBuildCall2(builder, LLVMGlobalGetValueType(malloc_fn_), malloc_fn_, &finalSize, 1, "final_seg");
     LLVMValueRef strcpyArgs[] = {finalSeg, finalStart};
     LLVMBuildCall2(builder, LLVMGlobalGetValueType(strcpy_fn_), strcpy_fn_, strcpyArgs, 2, "");
-    // Store final segment
+
     LLVMValueRef finalIndex = LLVMBuildLoad2(builder, int32_t_, indexAlloca, "final_idx");
     LLVMValueRef sp_idx_final[] = {finalIndex};
     LLVMValueRef finalSlot = LLVMBuildGEP2(builder, int8ptr_t_, resultArray, sp_idx_final, 1, "final_slot");
     LLVMBuildStore(builder, finalSeg, finalSlot);
-    // Null terminate the array
+
     LLVMValueRef lastIndex = LLVMBuildAdd(builder, finalIndex, LLVMConstInt(int32_t_, 1, 0), "last_idx");
     LLVMValueRef sp_idx_null[] = {lastIndex};
     LLVMValueRef nullSlot = LLVMBuildGEP2(builder, int8ptr_t_, resultArray, sp_idx_null, 1, "null_slot");
@@ -1786,14 +1756,11 @@ LLVMValueRef BuiltinFunctions::stringStartsWith(LLVMBuilderRef builder, const st
     LLVMValueRef str = args[0];
     LLVMValueRef prefix = args[1];
 
-    // Get prefix length
     LLVMValueRef prefixLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &prefix, 1, "prefix_len");
 
-    // Compare first prefixLen characters
     LLVMValueRef strncmpArgs[] = {str, prefix, prefixLen};
     LLVMValueRef cmpResult = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strncmp_fn_), strncmp_fn_, strncmpArgs, 3, "strncmp_result");
 
-    // Return true if strncmp returns 0
     LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
     return LLVMBuildICmp(builder, LLVMIntEQ, cmpResult, zero, "starts_with_result");
 }
@@ -1806,11 +1773,9 @@ LLVMValueRef BuiltinFunctions::stringEndsWith(LLVMBuilderRef builder, const std:
     LLVMValueRef str = args[0];
     LLVMValueRef suffix = args[1];
 
-    // Get string and suffix lengths
     LLVMValueRef strLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &str, 1, "str_len");
     LLVMValueRef suffixLen = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strlen_fn_), strlen_fn_, &suffix, 1, "suffix_len");
 
-    // Check if suffix is longer than string
     LLVMValueRef tooLong = LLVMBuildICmp(builder, LLVMIntUGT, suffixLen, strLen, "suffix_too_long");
 
     LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder);
@@ -1821,25 +1786,21 @@ LLVMValueRef BuiltinFunctions::stringEndsWith(LLVMBuilderRef builder, const std:
 
     LLVMBuildCondBr(builder, tooLong, falseBB, compareBB);
 
-    // Compare suffix
     LLVMPositionBuilderAtEnd(builder, compareBB);
-    // Get pointer to end of string minus suffix length
+
     LLVMValueRef offset = LLVMBuildSub(builder, strLen, suffixLen, "end_offset");
     LLVMValueRef ew_idx[] = {offset};
     LLVMValueRef strEnd = LLVMBuildGEP2(builder, LLVMInt8TypeInContext(ctx_), str, ew_idx, 1, "str_end");
 
-    // Compare
     LLVMValueRef strncmpArgs[] = {strEnd, suffix, suffixLen};
     LLVMValueRef cmpResult = LLVMBuildCall2(builder, LLVMGlobalGetValueType(strncmp_fn_), strncmp_fn_, strncmpArgs, 3, "strncmp_result");
     LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
     LLVMValueRef isEqual = LLVMBuildICmp(builder, LLVMIntEQ, cmpResult, zero, "is_equal");
     LLVMBuildBr(builder, mergeBB);
 
-    // False branch
     LLVMPositionBuilderAtEnd(builder, falseBB);
     LLVMBuildBr(builder, mergeBB);
 
-    // Merge
     LLVMPositionBuilderAtEnd(builder, mergeBB);
     LLVMValueRef phi = LLVMBuildPhi(builder, bool_t_, "ends_with_result");
     LLVMValueRef phiValues[] = {isEqual, LLVMConstInt(bool_t_, 0, 0)};

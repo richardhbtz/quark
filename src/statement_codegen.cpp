@@ -80,7 +80,6 @@ void StatementCodeGen::genStmt(StmtAST *stmt, LLVMValueRef putsFn)
         return;
     }
 
-    // Module declaration - no code generation needed
     if (auto *modDecl = dynamic_cast<ModuleDeclStmt *>(stmt))
     {
         if (verbose_)
@@ -109,7 +108,6 @@ void StatementCodeGen::genStmt(StmtAST *stmt, LLVMValueRef putsFn)
         return;
     }
 
-    // Handle function definitions
     if (auto *f = dynamic_cast<FunctionAST *>(stmt))
     {
         genFunctionStmt(f, putsFn);
@@ -128,28 +126,24 @@ void StatementCodeGen::genStmt(StmtAST *stmt, LLVMValueRef putsFn)
         return;
     }
 
-    // Handle if statements
     if (auto *ifs = dynamic_cast<IfStmtAST *>(stmt))
     {
         genIfStmt(ifs, putsFn);
         return;
     }
 
-    // Handle for statements
     if (auto *forStmt = dynamic_cast<ForStmt *>(stmt))
     {
         genForStmt(forStmt, putsFn);
         return;
     }
 
-    // Handle while statements
     if (auto *whileStmt = dynamic_cast<WhileStmt *>(stmt))
     {
         genWhileStmt(whileStmt, putsFn);
         return;
     }
 
-    // Handle break/continue
     if (dynamic_cast<BreakStmt *>(stmt))
     {
         genBreakStmt();
@@ -161,28 +155,24 @@ void StatementCodeGen::genStmt(StmtAST *stmt, LLVMValueRef putsFn)
         return;
     }
 
-    // Handle struct definitions
     if (auto *structDef = dynamic_cast<StructDefStmt *>(stmt))
     {
         genStructDefStmt(structDef);
         return;
     }
 
-    // Handle impl blocks
     if (auto *impl = dynamic_cast<ImplStmt *>(stmt))
     {
         genImplStmt(impl, putsFn);
         return;
     }
 
-    // Handle return statements
     if (auto *retStmt = dynamic_cast<ReturnStmt *>(stmt))
     {
         genReturnStmt(retStmt);
         return;
     }
 
-    // Handle member assignments
     if (auto *memberAssign = dynamic_cast<MemberAssignStmt *>(stmt))
     {
         genMemberAssignStmt(memberAssign);
@@ -201,14 +191,12 @@ void StatementCodeGen::genStmt(StmtAST *stmt, LLVMValueRef putsFn)
         return;
     }
 
-    // Handle match statements
     if (auto *matchStmt = dynamic_cast<MatchStmt *>(stmt))
     {
         genMatchStmt(matchStmt);
         return;
     }
 
-    // Handle expression statements
     if (auto *es = dynamic_cast<ExprStmtAST *>(stmt))
     {
         genExprStmt(es, putsFn);
@@ -288,14 +276,12 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
     LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(ctx_, fn, "entry");
     LLVMPositionBuilderAtEnd(builder_, bb);
 
-    // Save current variable state
     auto savedNamedValues = *g_named_values_;
     auto savedNamedTypes = *g_named_types_;
 
     if (verbose_)
         printf("[codegen] clearing variables for function scope\n");
 
-    // Save globals (extern variables) before clearing - they have LLVMGlobalValueKind
     std::unordered_map<std::string, LLVMValueRef> savedGlobalVars;
     std::unordered_map<std::string, LLVMTypeRef> savedGlobalTypes;
     for (const auto &pair : *g_named_values_)
@@ -314,7 +300,6 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
     g_named_values_->clear();
     g_named_types_->clear();
 
-    // Restore global/extern variables
     for (const auto &pair : savedGlobalVars)
     {
         (*g_named_values_)[pair.first] = pair.second;
@@ -343,7 +328,7 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             LLVMBuildStore(builder_, thisArg, thisAlloca);
             (*g_named_values_)["this"] = thisAlloca;
             (*g_named_types_)["this"] = selfPtrTy;
-            functionParams["this"] = false; // alloca-based
+            functionParams["this"] = false;
             expressionCodeGen_->declareVariable("this", QuarkType::Struct, SourceLocation(), structName);
 
             auto structDefIt = g_struct_defs_->find(structName);
@@ -430,12 +415,12 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             }
             else
             {
-                paramType = LLVMInt32TypeInContext(ctx_); // default fallback
+                paramType = LLVMInt32TypeInContext(ctx_);
             }
         }
         else
         {
-            // Check if it's a struct type
+
             auto structIt = g_struct_types_->find(ptype);
             if (structIt != g_struct_types_->end())
             {
@@ -443,7 +428,7 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             }
             else
             {
-                paramType = LLVMInt32TypeInContext(ctx_); // default fallback
+                paramType = LLVMInt32TypeInContext(ctx_);
             }
         }
 
@@ -531,7 +516,7 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
         }
         else
         {
-            // Check if it's a struct type
+
             auto structIt = g_struct_types_->find(ptype);
             if (structIt != g_struct_types_->end())
             {
@@ -543,7 +528,6 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
 
     expressionCodeGen_->setFunctionParameters(functionParams);
 
-    // Generate function body
     if (verbose_)
         printf("[codegen] generating function body with %zu statements\n", f->body.size());
     for (size_t i = 0; i < f->body.size(); ++i)
@@ -567,13 +551,12 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
     if (verbose_)
         printf("[codegen] ensuring function '%s' has terminators on all paths\n", f->name.c_str());
 
-    // Create epilogue block
     LLVMBasicBlockRef epilogueBB = LLVMAppendBasicBlockInContext(ctx_, fn, "func_epilogue");
 
     for (LLVMBasicBlockRef bbIt = LLVMGetFirstBasicBlock(fn); bbIt; bbIt = LLVMGetNextBasicBlock(bbIt))
     {
         if (bbIt == epilogueBB)
-            continue; // skip epilogue itself
+            continue;
         if (!LLVMGetBasicBlockTerminator(bbIt))
         {
             LLVMPositionBuilderAtEnd(builder_, bbIt);
@@ -653,7 +636,6 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
     if (verbose_)
         printf("[codegen] processing variable declaration: %s %s\n", vdecl->type.c_str(), vdecl->name.c_str());
 
-    // Helper to throw enhanced errors with proper location
     auto throwError = [this, vdecl](const std::string &msg, const SourceLocation &loc, const std::string &errorCode, int length = 1)
     {
         auto *sm = sourceManager();
@@ -675,7 +657,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
     }
     catch (const EnhancedCodeGenError &)
     {
-        throw; // Re-throw enhanced errors as-is
+        throw;
     }
     catch (const std::exception &e)
     {
@@ -692,7 +674,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
         declaredType = initType.type;
         if (initType.type == QuarkType::FunctionPointer)
         {
-            // Preserve function pointer info from inferred type
+
             inferredFpInfo = initType.funcPtrInfo;
         }
         if (verbose_)
@@ -708,7 +690,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
     }
     else if (IntegerTypeUtils::isFunctionPointerType(vdecl->type))
     {
-        // Function pointer type: fn(args) -> ret
+
         declaredType = QuarkType::FunctionPointer;
     }
     else if (!vdecl->type.empty() && vdecl->type.back() == '*')
@@ -721,11 +703,11 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
     }
     else
     {
-        // Try integer family first
+
         declaredType = IntegerTypeUtils::stringToQuarkType(vdecl->type);
         if (declaredType == QuarkType::Unknown)
         {
-            // Check if it's a struct type
+
             if (g_struct_defs_ && g_struct_defs_->find(vdecl->type) != g_struct_defs_->end())
             {
                 declaredType = QuarkType::Struct;
@@ -744,14 +726,14 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
         {
             bool bothIntegers = IntegerTypeUtils::isIntegerType(declaredType) && IntegerTypeUtils::isIntegerType(initType.type);
             bool bothNumeric = IntegerTypeUtils::isNumericType(declaredType) && IntegerTypeUtils::isNumericType(initType.type);
-            // Allow FunctionPointer to be assigned to void* (Pointer)
+
             bool fnPtrToVoidPtr = (initType.type == QuarkType::FunctionPointer &&
                                    declaredType == QuarkType::Pointer &&
                                    vdecl->type == "void*");
-            // Allow null to be assigned to void* (Pointer)
+
             bool nullToVoidPtr = (initType.type == QuarkType::Null &&
                                   declaredType == QuarkType::Pointer);
-            // Allow array literals to initialize list variables
+
             bool arrayToList = (initType.type == QuarkType::Array &&
                                 declaredType == QuarkType::List);
             if (!bothIntegers && !bothNumeric && !fnPtrToVoidPtr && !nullToVoidPtr && !arrayToList)
@@ -788,33 +770,32 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
         actualType = "str";
         varType = int8ptr_t_;
         {
-            // Check if we're at global scope (no current basic block)
+
             LLVMBasicBlockRef currentBB = LLVMGetInsertBlock(builder_);
             if (!currentBB)
             {
-                // Global string variable - must be initialized with a literal
+
                 if (auto *strExpr = dynamic_cast<StringExprAST *>(vdecl->init.get()))
                 {
-                    // Create the string constant first to get the properly typed array
+
                     unsigned strLen = static_cast<unsigned int>(strExpr->value.length() + 1);
                     LLVMValueRef initVal = LLVMConstString(strExpr->value.c_str(), strLen - 1, 0);
-                    LLVMTypeRef strArrayType = LLVMTypeOf(initVal); // Get the actual array type from the constant
+                    LLVMTypeRef strArrayType = LLVMTypeOf(initVal);
 
                     std::string dataName = vdecl->name + "_data";
 
                     LLVMValueRef globalStrData = LLVMAddGlobal(module_, strArrayType, dataName.c_str());
                     LLVMSetInitializer(globalStrData, initVal);
                     LLVMSetLinkage(globalStrData, LLVMPrivateLinkage);
-                    LLVMSetGlobalConstant(globalStrData, 1); // Mark as constant
+                    LLVMSetGlobalConstant(globalStrData, 1);
 
-                    // Store the data global directly - when accessed, it acts as a char*
                     (*g_named_values_)[vdecl->name] = globalStrData;
                     (*g_named_types_)[vdecl->name] = strArrayType;
                     expressionCodeGen_->declareVariable(vdecl->name, declaredType, vdecl->init->location);
 
                     if (verbose_)
                         printf("[codegen] completed global string variable declaration: %s\n", vdecl->name.c_str());
-                    return; // Early return for global string
+                    return;
                 }
                 else
                 {
@@ -842,10 +823,10 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
     case QuarkType::List:
         actualType = "list";
         varType = int8ptr_t_;
-        // Check if init is an array literal and convert it to list
+
         if (auto *arrayLit = dynamic_cast<ArrayLiteralExpr *>(vdecl->init.get()))
         {
-            // Convert to ListLiteralExpr
+
             ListLiteralExpr listLit;
             listLit.location = arrayLit->location;
             for (auto &elem : arrayLit->elements)
@@ -868,12 +849,12 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
             LLVMTypeRef vty = LLVMTypeOf(val);
             if (LLVMGetTypeKind(vty) == LLVMDoubleTypeKind)
             {
-                // double -> float
+
                 val = LLVMBuildFPTrunc(builder_, val, float_t_, "trunc_to_float");
             }
             else if (LLVMGetTypeKind(vty) == LLVMIntegerTypeKind)
             {
-                // int -> float
+
                 val = LLVMBuildSIToFP(builder_, val, float_t_, "i_to_float");
             }
         }
@@ -887,12 +868,12 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
             LLVMTypeRef vty = LLVMTypeOf(val);
             if (LLVMGetTypeKind(vty) == LLVMFloatTypeKind)
             {
-                // float -> double
+
                 val = LLVMBuildFPExt(builder_, val, double_t_, "ext_to_double");
             }
             else if (LLVMGetTypeKind(vty) == LLVMIntegerTypeKind)
             {
-                // int -> double
+
                 val = LLVMBuildSIToFP(builder_, val, double_t_, "i_to_double");
             }
         }
@@ -954,36 +935,35 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
         val = expressionCodeGen_->genExpr(vdecl->init.get());
         break;
     case QuarkType::Null:
-        // Null literal - treat as void pointer (i8*)
+
         varType = int8ptr_t_;
         val = expressionCodeGen_->genExpr(vdecl->init.get());
         break;
     case QuarkType::FunctionPointer:
     {
-        // Function pointer type - stored as void* (i8*)
+
         actualType = vdecl->type;
-        varType = int8ptr_t_; // Function pointers are just void*
+        varType = int8ptr_t_;
         val = expressionCodeGen_->genExpr(vdecl->init.get());
 
         std::shared_ptr<FunctionPointerTypeInfo> fpInfo;
 
-        // If we inferred the type from the initializer, use that info
         if (inferredFpInfo)
         {
             fpInfo = inferredFpInfo;
         }
         else
         {
-            // Parse the function pointer type to extract signature info
+
             fpInfo = std::make_shared<FunctionPointerTypeInfo>();
-            // Parse format: fn(int, str) -> int
+
             std::string typeStr = vdecl->type;
             if (typeStr.size() > 2 && typeStr.substr(0, 2) == "fn" && typeStr[2] == '(')
             {
                 size_t parenClose = typeStr.find(')');
                 if (parenClose != std::string::npos)
                 {
-                    // Extract parameter types
+
                     std::string paramsStr = typeStr.substr(3, parenClose - 3);
                     if (!paramsStr.empty())
                     {
@@ -991,7 +971,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
                         while ((pos = paramsStr.find(',', lastPos)) != std::string::npos)
                         {
                             std::string param = paramsStr.substr(lastPos, pos - lastPos);
-                            // Trim whitespace
+
                             size_t start = param.find_first_not_of(" \t");
                             size_t end = param.find_last_not_of(" \t");
                             if (start != std::string::npos && end != std::string::npos)
@@ -1000,7 +980,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
                             }
                             lastPos = pos + 1;
                         }
-                        // Last parameter
+
                         std::string param = paramsStr.substr(lastPos);
                         size_t start = param.find_first_not_of(" \t");
                         size_t end = param.find_last_not_of(" \t");
@@ -1010,7 +990,6 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
                         }
                     }
 
-                    // Extract return type (after "->")
                     size_t arrowPos = typeStr.find("->", parenClose);
                     if (arrowPos != std::string::npos)
                     {
@@ -1030,7 +1009,6 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
             }
         }
 
-        // Declare the variable with function pointer type info
         std::string typeStr = (vdecl->type == "auto" && fpInfo) ? fpInfo->toString() : vdecl->type;
         TypeInfo fpTypeInfo(QuarkType::FunctionPointer, vdecl->location, "", QuarkType::Unknown, 0, typeStr, fpInfo);
         expressionCodeGen_->declareVariable(vdecl->name, fpTypeInfo);
@@ -1040,7 +1018,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
         actualType = "char";
         varType = LLVMInt8TypeInContext(ctx_);
         val = expressionCodeGen_->genExpr(vdecl->init.get());
-        // Handle conversion from int to char if needed
+
         if (val)
         {
             LLVMTypeRef vty = LLVMTypeOf(val);
@@ -1059,7 +1037,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
 
     if (currentBB)
     {
-        // Create alloca in entry block to avoid stack growth in loops
+
         LLVMValueRef currentFn = LLVMGetBasicBlockParent(currentBB);
         storage = createEntryBlockAlloca(currentFn, varType, vdecl->name.c_str());
 
@@ -1136,7 +1114,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
                         }
                         else if (!fieldTypeName.empty() && fieldTypeName.back() == '*')
                         {
-                            // Pointer-typed field
+
                             std::string base = fieldTypeName.substr(0, fieldTypeName.size() - 1);
                             if (base == "void" || base == "char" || base == "str")
                             {
@@ -1167,14 +1145,14 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
                                 }
                                 else
                                 {
-                                    // Fallback: opaque i8*
+
                                     fieldType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
                                 }
                             }
                         }
                         else
                         {
-                            // It's a struct type
+
                             auto structFieldTypeIt = g_struct_types_->find(fieldTypeName);
                             if (structFieldTypeIt != g_struct_types_->end())
                             {
@@ -1251,7 +1229,7 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
     }
     else if (declaredType == QuarkType::Null)
     {
-        // Null is treated as a pointer type (void*)
+
         expressionCodeGen_->declareVariable(vdecl->name, QuarkType::Pointer, vdecl->init->location, "", "void*");
     }
     else
@@ -1307,7 +1285,7 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
         case QuarkType::Float:
             varType = float_t_;
             val = expressionCodeGen_->genExpr(as->value.get());
-            // Normalize to float storage
+
             if (val)
             {
                 LLVMTypeRef vty = LLVMTypeOf(val);
@@ -1324,7 +1302,7 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
         case QuarkType::Double:
             varType = double_t_;
             val = expressionCodeGen_->genExpr(as->value.get());
-            // Normalize to double storage
+
             if (val)
             {
                 LLVMTypeRef vty = LLVMTypeOf(val);
@@ -1364,7 +1342,7 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
 
         if (currentBB)
         {
-            // Create alloca in entry block to avoid stack growth in loops
+
             LLVMValueRef currentFn = LLVMGetBasicBlockParent(currentBB);
             storage = createEntryBlockAlloca(currentFn, varType, as->varName.c_str());
             LLVMBuildStore(builder_, val, storage);
@@ -1423,7 +1401,7 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
             if (existingType != valueType.type)
             {
                 bool bothIntegers = IntegerTypeUtils::isIntegerType(existingType) && IntegerTypeUtils::isIntegerType(valueType.type);
-                // Allow FunctionPointer to be assigned to void* (Pointer)
+
                 bool fnPtrToVoidPtr = (valueType.type == QuarkType::FunctionPointer &&
                                        existingType == QuarkType::Pointer);
                 if (!bothIntegers && !fnPtrToVoidPtr)
@@ -1450,22 +1428,22 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
             LLVMTypeRef targetTy = typeIt->second;
             if (targetTy == int8ptr_t_)
             {
-                // string
+
                 val = expressionCodeGen_->genExpr(as->value.get());
             }
             else if (targetTy == bool_t_)
             {
-                // bool
+
                 val = expressionCodeGen_->genExprBool(as->value.get());
             }
             else if (LLVMGetTypeKind(targetTy) == LLVMIntegerTypeKind)
             {
-                // integer (respect width)
+
                 val = expressionCodeGen_->genExprIntWithType(as->value.get(), targetTy);
             }
             else if (LLVMGetTypeKind(targetTy) == LLVMFloatTypeKind)
             {
-                // float
+
                 val = expressionCodeGen_->genExpr(as->value.get());
                 LLVMTypeRef vty = val ? LLVMTypeOf(val) : nullptr;
                 if (val)
@@ -1480,14 +1458,14 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
                     }
                     else if (LLVMGetTypeKind(vty) != LLVMFloatTypeKind)
                     {
-                        // Best-effort cast
+
                         val = LLVMBuildBitCast(builder_, val, targetTy, "to_float");
                     }
                 }
             }
             else if (LLVMGetTypeKind(targetTy) == LLVMDoubleTypeKind)
             {
-                // double
+
                 val = expressionCodeGen_->genExpr(as->value.get());
                 LLVMTypeRef vty = val ? LLVMTypeOf(val) : nullptr;
                 if (val)
@@ -1502,14 +1480,14 @@ void StatementCodeGen::genAssignStmt(AssignStmtAST *as)
                     }
                     else if (LLVMGetTypeKind(vty) != LLVMDoubleTypeKind)
                     {
-                        // Best-effort cast
+
                         val = LLVMBuildBitCast(builder_, val, targetTy, "to_double");
                     }
                 }
             }
             else
             {
-                // Fallback
+
                 val = expressionCodeGen_->genExpr(as->value.get());
             }
         }
@@ -1564,7 +1542,7 @@ void StatementCodeGen::genExprStmt(ExprStmtAST *es, LLVMValueRef putsFn)
                 {
                     if (verbose_)
                         printf("[codegen] undefined variable in expression statement: %s\n", var->name.c_str());
-                    // Skip instead of throwing
+
                     return;
                 }
             }
@@ -1589,19 +1567,16 @@ void StatementCodeGen::genExprStmt(ExprStmtAST *es, LLVMValueRef putsFn)
         {
             if (verbose_)
                 printf("[codegen] expression statement is a number literal\n");
-            // No code generation needed
         }
         else if (auto *str = dynamic_cast<StringExprAST *>(es->expr.get()))
         {
             if (verbose_)
                 printf("[codegen] expression statement is a string literal\n");
-            // No code generation needed
         }
         else if (auto *boolean = dynamic_cast<BoolExprAST *>(es->expr.get()))
         {
             if (verbose_)
                 printf("[codegen] expression statement is a boolean literal\n");
-            // No code generation needed
         }
         else
         {
@@ -1637,21 +1612,18 @@ void StatementCodeGen::genIfStmt(IfStmtAST *ifstmt, LLVMValueRef putsFn)
 
     LLVMValueRef condVal = expressionCodeGen_->genExprBool(ifstmt->cond.get());
 
-    // Current function
     LLVMValueRef currentFn = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
     if (!currentFn)
     {
         throw std::runtime_error("if statement generated outside function context");
     }
 
-    // Create blocks
     LLVMBasicBlockRef thenBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "then");
     LLVMBasicBlockRef elseBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "else");
     LLVMBasicBlockRef contBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "ifcont");
 
     LLVMBuildCondBr(builder_, condVal, thenBB, elseBB);
 
-    // Then block
     LLVMPositionBuilderAtEnd(builder_, thenBB);
     for (size_t i = 0; i < ifstmt->thenBody.size(); ++i)
     {
@@ -1662,7 +1634,6 @@ void StatementCodeGen::genIfStmt(IfStmtAST *ifstmt, LLVMValueRef putsFn)
         LLVMBuildBr(builder_, contBB);
     }
 
-    // Else / elif handling
     LLVMPositionBuilderAtEnd(builder_, elseBB);
     bool emittedElse = false;
     if (!ifstmt->elifs.empty())
@@ -1681,7 +1652,6 @@ void StatementCodeGen::genIfStmt(IfStmtAST *ifstmt, LLVMValueRef putsFn)
         emittedElse = true;
     }
 
-    // Else body
     for (size_t i = 0; i < ifstmt->elseBody.size(); ++i)
     {
         genStmt(ifstmt->elseBody[i].get(), putsFn);
@@ -1690,7 +1660,6 @@ void StatementCodeGen::genIfStmt(IfStmtAST *ifstmt, LLVMValueRef putsFn)
     if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder_)))
         LLVMBuildBr(builder_, contBB);
 
-    // Continue block
     LLVMPositionBuilderAtEnd(builder_, contBB);
 
     if (verbose_)
@@ -1819,7 +1788,6 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
     if (!g_function_map_ || !g_function_param_types_)
         throw std::runtime_error("global symbol tables not initialized");
 
-    // Check if already declared
     if (g_function_map_->find(externFunc->name) != g_function_map_->end())
     {
         if (verbose_)
@@ -1843,7 +1811,7 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
             if (elem == "double")
                 return LLVMPointerType(double_t_, 0);
             if (elem == "str")
-                return LLVMPointerType(int8ptr_t_, 0); // char**
+                return LLVMPointerType(int8ptr_t_, 0);
             if (elem == "bool")
                 return LLVMPointerType(bool_t_, 0);
             return LLVMPointerType(int32_t_, 0);
@@ -1858,7 +1826,7 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
             std::string base = type.substr(0, type.size() - stars);
 
             LLVMTypeRef baseTy = nullptr;
-            // Normalize common aliases
+
             if (base == "str")
             {
                 baseTy = int8ptr_t_;
@@ -1966,10 +1934,8 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
         }
     };
 
-    // Get return type
     LLVMTypeRef returnType = mapType(externFunc->returnType);
 
-    // Get parameter types
     std::vector<LLVMTypeRef> paramTypes;
     bool isVariadic = false;
     for (const auto &param : externFunc->params)
@@ -1983,25 +1949,22 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
             continue;
         }
 
-        LLVMTypeRef paramType = mapType(param.second); // param.second is the type
+        LLVMTypeRef paramType = mapType(param.second);
         paramTypes.push_back(paramType);
         if (verbose_)
             printf("[codegen] extern function param: %s type %s\n",
                    param.first.c_str(), param.second.c_str());
     }
 
-    // Create function type
     LLVMTypeRef funcType = LLVMFunctionType(returnType,
                                             paramTypes.empty() ? nullptr : paramTypes.data(),
                                             static_cast<unsigned int>(paramTypes.size()),
-                                            isVariadic ? 1 : 0); // set variadic flag
+                                            isVariadic ? 1 : 0);
 
-    // Declare the function
     LLVMValueRef func = LLVMAddFunction(module_, externFunc->name.c_str(), funcType);
 
     LLVMSetLinkage(func, LLVMExternalLinkage);
 
-    // Store in function map
     (*g_function_map_)[externFunc->name] = func;
     (*g_function_param_types_)[externFunc->name] = paramTypes;
     (*g_variadic_functions_)[externFunc->name] = isVariadic;
@@ -2040,7 +2003,6 @@ void StatementCodeGen::declareExternVariable(ExternVarAST *externVar)
     if (!g_named_values_ || !g_named_types_)
         throw std::runtime_error("global symbol tables not initialized");
 
-    // Check if already declared
     if (g_named_values_->find(externVar->name) != g_named_values_->end())
     {
         if (verbose_)
@@ -2052,7 +2014,6 @@ void StatementCodeGen::declareExternVariable(ExternVarAST *externVar)
         printf("[codegen] declaring extern variable: %s with type %s\n",
                externVar->name.c_str(), externVar->typeName.c_str());
 
-    // Map the type string to an LLVM type
     auto mapType = [this](const std::string &type) -> LLVMTypeRef
     {
         if (!type.empty() && type.back() == '*')
@@ -2136,7 +2097,6 @@ void StatementCodeGen::declareExternVariable(ExternVarAST *externVar)
         }
     };
 
-    // Map type string to QuarkType
     auto mapToQuarkType = [](const std::string &type) -> QuarkType
     {
         if (type == "int")
@@ -2159,16 +2119,13 @@ void StatementCodeGen::declareExternVariable(ExternVarAST *externVar)
     LLVMTypeRef varType = mapType(externVar->typeName);
     QuarkType quarkType = mapToQuarkType(externVar->typeName);
 
-    // Add external global variable
     LLVMValueRef globalVar = LLVMAddGlobal(module_, varType, externVar->name.c_str());
     LLVMSetLinkage(globalVar, LLVMExternalLinkage);
-    LLVMSetExternallyInitialized(globalVar, 1); // Externally initialized
+    LLVMSetExternallyInitialized(globalVar, 1);
 
-    // Store in the named values so it can be accessed
     (*g_named_values_)[externVar->name] = globalVar;
     (*g_named_types_)[externVar->name] = varType;
 
-    // Register the type info for the expression codegen
     if (externVar->funcPtrInfo)
     {
         quarkType = QuarkType::FunctionPointer;
@@ -2192,7 +2149,6 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
     if (verbose_)
         printf("[codegen] creating struct type: %s\n", structDef->name.c_str());
 
-    // Store the struct definition
     (*g_struct_defs_)[structDef->name] = structDef;
 
     std::vector<LLVMTypeRef> fieldTypes;
@@ -2213,7 +2169,6 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
             collectInheritedFields(currentStruct->parentName);
         }
 
-        // Add this struct's fields
         for (const auto &field : currentStruct->fields)
         {
             allFields.push_back(field);
@@ -2227,7 +2182,6 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
         collectInheritedFields(structDef->parentName);
     }
 
-    // Add this struct's own fields
     for (const auto &field : structDef->fields)
     {
         allFields.push_back(field);
@@ -2330,7 +2284,6 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
         fieldTypes.push_back(llvmType);
     }
 
-    // Create the LLVM struct type
     LLVMTypeRef structType = LLVMStructTypeInContext(ctx_, fieldTypes.data(), static_cast<unsigned int>(fieldTypes.size()), 0);
     (*g_struct_types_)[structDef->name] = structType;
 
@@ -2365,7 +2318,6 @@ void StatementCodeGen::genStructDefStmt(StructDefStmt *structDef)
                 method->name = mangledName;
                 genFunctionStmt(method.get(), nullptr);
 
-                // Restore the original name
                 method->name = originalName;
             }
             else
@@ -2400,25 +2352,21 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
     if (verbose_)
         printf("[codegen] processing member assignment\n");
 
-    // Handle nested member access (e.g., this.author.id = value)
     if (auto *nestedAccess = dynamic_cast<MemberAccessExpr *>(memberAssign->object.get()))
     {
-        // We need to get a pointer to the nested struct field, then GEP into it
-        // First, get the type info of the nested object
+
         TypeInfo nestedTypeInfo = expressionCodeGen_->inferType(nestedAccess);
         if (nestedTypeInfo.type != QuarkType::Struct)
         {
             throw std::runtime_error("nested member assignment on non-struct type");
         }
 
-        // Get the struct definition for the nested type
         auto defIt = g_struct_defs_->find(nestedTypeInfo.structName);
         if (defIt == g_struct_defs_->end())
         {
             throw std::runtime_error("struct definition not found: " + nestedTypeInfo.structName);
         }
 
-        // Get the struct LLVM type
         auto structTypeIt = g_struct_types_->find(nestedTypeInfo.structName);
         if (structTypeIt == g_struct_types_->end())
         {
@@ -2426,7 +2374,6 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
         }
         LLVMTypeRef nestedStructType = structTypeIt->second;
 
-        // Collect all fields including inherited ones
         std::vector<std::pair<std::string, std::string>> allFields;
         std::function<void(const std::string &)> collectInheritedFields = [&](const std::string &currentStructName)
         {
@@ -2445,7 +2392,6 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
         };
         collectInheritedFields(nestedTypeInfo.structName);
 
-        // Find the field index for the target field
         int fieldIndex = -1;
         std::string fieldType;
         for (size_t i = 0; i < allFields.size(); ++i)
@@ -2462,14 +2408,10 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
             throw std::runtime_error("Field '" + memberAssign->fieldName + "' not found in struct " + nestedTypeInfo.structName);
         }
 
-        // Now we need to get a pointer to the nested struct
-        // We need to walk the chain and get GEP pointers all the way down
         LLVMValueRef nestedStructPtr = genNestedMemberPtr(nestedAccess);
 
-        // Get pointer to the field within the nested struct
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, nestedStructType, nestedStructPtr, fieldIndex, "nested_field_ptr");
 
-        // Generate the value to store
         LLVMValueRef value;
         if (fieldType == "str")
         {
@@ -2488,7 +2430,6 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
             value = expressionCodeGen_->genExpr(memberAssign->value.get());
         }
 
-        // Store the value
         LLVMBuildStore(builder_, value, fieldPtr);
 
         if (verbose_)
@@ -2504,8 +2445,8 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
             throw std::runtime_error("Unknown variable '" + varExpr->name + "' in member assignment");
         }
 
-        LLVMValueRef objectPtrForGEP = nullptr; // must be struct*
-        LLVMTypeRef structType = nullptr;       // underlying struct type
+        LLVMValueRef objectPtrForGEP = nullptr;
+        LLVMTypeRef structType = nullptr;
 
         if (varExpr->name == "this")
         {
@@ -2521,7 +2462,7 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
                 if (stIt != g_struct_types_->end())
                 {
                     structType = stIt->second;
-                    LLVMValueRef objectAlloca = it->second; // alloca of struct*
+                    LLVMValueRef objectAlloca = it->second;
                     LLVMTypeRef ptrToStructTy = LLVMPointerType(structType, 0);
                     objectPtrForGEP = LLVMBuildLoad2(builder_, ptrToStructTy, objectAlloca, "this.ptr.load");
                 }
@@ -2531,16 +2472,16 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
         if (!structType || !objectPtrForGEP)
         {
             LLVMValueRef objectAlloca = it->second;
-            LLVMTypeRef allocaTy = LLVMTypeOf(objectAlloca); // pointer to allocated type
+            LLVMTypeRef allocaTy = LLVMTypeOf(objectAlloca);
             if (LLVMGetTypeKind(allocaTy) != LLVMPointerTypeKind)
             {
                 throw std::runtime_error("expected pointer for variable '" + varExpr->name + "'");
             }
-            LLVMTypeRef allocatedTy = LLVMGetElementType(allocaTy); // the allocated type
+            LLVMTypeRef allocatedTy = LLVMGetElementType(allocaTy);
             if (LLVMGetTypeKind(allocatedTy) == LLVMStructTypeKind)
             {
                 structType = allocatedTy;
-                objectPtrForGEP = objectAlloca; // already struct*
+                objectPtrForGEP = objectAlloca;
             }
             else if (LLVMGetTypeKind(allocatedTy) == LLVMPointerTypeKind)
             {
@@ -2548,7 +2489,7 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
                 if (elemTy && LLVMGetTypeKind(elemTy) == LLVMStructTypeKind)
                 {
                     structType = elemTy;
-                    objectPtrForGEP = LLVMBuildLoad2(builder_, allocatedTy, objectAlloca, "obj.ptr.load"); // yields struct*
+                    objectPtrForGEP = LLVMBuildLoad2(builder_, allocatedTy, objectAlloca, "obj.ptr.load");
                 }
                 else
                 {
@@ -2599,7 +2540,6 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
                 collectInheritedFields(currentStruct->parentName);
             }
 
-            // Add this struct's fields
             for (const auto &field : currentStruct->fields)
             {
                 allFields.push_back(field);
@@ -2625,7 +2565,6 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
             throw std::runtime_error("Field '" + memberAssign->fieldName + "' not found in struct " + structName);
         }
 
-        // Get pointer to the field
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structType, objectPtrForGEP, fieldIndex, "field_ptr");
 
         LLVMValueRef value;
@@ -2646,7 +2585,6 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
             value = expressionCodeGen_->genExpr(memberAssign->value.get());
         }
 
-        // Store the value
         LLVMBuildStore(builder_, value, fieldPtr);
 
         if (verbose_)
@@ -2660,19 +2598,16 @@ void StatementCodeGen::genMemberAssignStmt(MemberAssignStmt *memberAssign)
 
 LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess)
 {
-    // This function returns a pointer to the struct field for nested assignment
-    // e.g., for this.author, it returns a pointer to the author field
 
     if (auto *varExpr = dynamic_cast<VariableExprAST *>(memberAccess->object.get()))
     {
-        // Base case: variable.field - get pointer to the field
+
         auto it = g_named_values_->find(varExpr->name);
         if (it == g_named_values_->end())
         {
             throw std::runtime_error("Unknown variable '" + varExpr->name + "' in nested member access");
         }
 
-        // Get the struct type info
         auto localIt = expressionCodeGen_->variableTypes_.find(varExpr->name);
         if (localIt == expressionCodeGen_->variableTypes_.end())
         {
@@ -2684,7 +2619,6 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
             throw std::runtime_error("Variable is not a struct: " + varExpr->name);
         }
 
-        // Get struct LLVM type
         auto structTypeIt = g_struct_types_->find(typeInfo.structName);
         if (structTypeIt == g_struct_types_->end())
         {
@@ -2692,7 +2626,6 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
         }
         LLVMTypeRef structType = structTypeIt->second;
 
-        // Collect all fields including inherited ones
         std::vector<std::pair<std::string, std::string>> allFields;
         std::function<void(const std::string &)> collectInheritedFields = [&](const std::string &currentStructName)
         {
@@ -2711,7 +2644,6 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
         };
         collectInheritedFields(typeInfo.structName);
 
-        // Find the field index
         int fieldIndex = -1;
         for (size_t i = 0; i < allFields.size(); i++)
         {
@@ -2726,19 +2658,18 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
             throw std::runtime_error("Field not found: " + memberAccess->fieldName + " in struct " + typeInfo.structName);
         }
 
-        // Get the base pointer
         LLVMValueRef objectAlloca = it->second;
         LLVMValueRef objectPtrForGEP = nullptr;
 
         if (varExpr->name == "this")
         {
-            // For 'this', load the pointer from the alloca
+
             LLVMTypeRef ptrToStructTy = LLVMPointerType(structType, 0);
             objectPtrForGEP = LLVMBuildLoad2(builder_, ptrToStructTy, objectAlloca, "this.ptr.load");
         }
         else
         {
-            // For regular variables, check if it's an alloca of struct or pointer to struct
+
             LLVMTypeRef allocaTy = LLVMTypeOf(objectAlloca);
             LLVMTypeRef allocatedTy = LLVMGetElementType(allocaTy);
             if (LLVMGetTypeKind(allocatedTy) == LLVMStructTypeKind)
@@ -2755,23 +2686,20 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
             }
         }
 
-        // Build GEP to get pointer to the field
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structType, objectPtrForGEP, fieldIndex, "nested_member_ptr");
         return fieldPtr;
     }
     else if (auto *nestedAccess = dynamic_cast<MemberAccessExpr *>(memberAccess->object.get()))
     {
-        // Recursive case: nested.field.field - get pointer to nested field first, then GEP further
+
         LLVMValueRef outerFieldPtr = genNestedMemberPtr(nestedAccess);
 
-        // Get type info for the outer field
         TypeInfo nestedTypeInfo = expressionCodeGen_->inferType(nestedAccess);
         if (nestedTypeInfo.type != QuarkType::Struct)
         {
             throw std::runtime_error("Nested member access on non-struct type");
         }
 
-        // Get struct LLVM type
         auto structTypeIt = g_struct_types_->find(nestedTypeInfo.structName);
         if (structTypeIt == g_struct_types_->end())
         {
@@ -2779,7 +2707,6 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
         }
         LLVMTypeRef nestedStructType = structTypeIt->second;
 
-        // Collect all fields including inherited ones
         std::vector<std::pair<std::string, std::string>> allFields;
         std::function<void(const std::string &)> collectInheritedFields = [&](const std::string &currentStructName)
         {
@@ -2798,7 +2725,6 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
         };
         collectInheritedFields(nestedTypeInfo.structName);
 
-        // Find the field index
         int fieldIndex = -1;
         for (size_t i = 0; i < allFields.size(); i++)
         {
@@ -2813,7 +2739,6 @@ LLVMValueRef StatementCodeGen::genNestedMemberPtr(MemberAccessExpr *memberAccess
             throw std::runtime_error("Field not found: " + memberAccess->fieldName + " in struct " + nestedTypeInfo.structName);
         }
 
-        // Build GEP from the outer field pointer to get pointer to this field
         LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, nestedStructType, outerFieldPtr, fieldIndex, "deep_nested_member_ptr");
         return fieldPtr;
     }
@@ -2860,7 +2785,7 @@ void StatementCodeGen::genReturnStmt(ReturnStmt *retStmt)
 
     if (retStmt->returnValue)
     {
-        // Return with a value
+
         if (verbose_)
             printf("[codegen] returning expression (not a variable)\n");
 
@@ -2942,7 +2867,6 @@ void StatementCodeGen::genWhileStmt(WhileStmt *whileStmt, LLVMValueRef putsFn)
     if (verbose_)
         printf("[codegen] processing while statement\n");
 
-    // Get current function context
     LLVMValueRef currentFn = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
     if (!currentFn)
     {
@@ -2955,9 +2879,9 @@ void StatementCodeGen::genWhileStmt(WhileStmt *whileStmt, LLVMValueRef putsFn)
         {
             LLVMBasicBlockRef bodyBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "while_body");
             LLVMBasicBlockRef exitBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "while_exit");
-            // Jump directly to body
+
             LLVMBuildBr(builder_, bodyBB);
-            // Body
+
             LLVMPositionBuilderAtEnd(builder_, bodyBB);
             loopStack_.push_back({bodyBB, exitBB});
             for (size_t i = 0; i < whileStmt->body.size(); ++i)
@@ -3019,15 +2943,12 @@ void StatementCodeGen::genWhileStmt(WhileStmt *whileStmt, LLVMValueRef putsFn)
     LLVMBasicBlockRef bodyBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "while_body");
     LLVMBasicBlockRef exitBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "while_exit");
 
-    // Jump to condition block
     LLVMBuildBr(builder_, condBB);
 
-    // Generate condition block
     LLVMPositionBuilderAtEnd(builder_, condBB);
     LLVMValueRef condVal = expressionCodeGen_->genExprBool(whileStmt->condition.get());
     LLVMBuildCondBr(builder_, condVal, bodyBB, exitBB);
 
-    // Generate loop body
     LLVMPositionBuilderAtEnd(builder_, bodyBB);
     loopStack_.push_back({condBB, exitBB});
     for (size_t i = 0; i < whileStmt->body.size(); ++i)
@@ -3048,7 +2969,6 @@ void StatementCodeGen::genWhileStmt(WhileStmt *whileStmt, LLVMValueRef putsFn)
         }
     }
 
-    // Continue with exit block
     LLVMPositionBuilderAtEnd(builder_, exitBB);
 
     if (verbose_)
@@ -3060,7 +2980,6 @@ void StatementCodeGen::genForStmt(ForStmt *forStmt, LLVMValueRef putsFn)
     if (verbose_)
         printf("[codegen] processing for statement (basic range-based for loop)\n");
 
-    // Get current function context
     LLVMValueRef currentFn = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
     if (!currentFn)
     {
@@ -3080,29 +2999,24 @@ void StatementCodeGen::genForStmt(ForStmt *forStmt, LLVMValueRef putsFn)
         endVal = expressionCodeGen_->genExprInt(forStmt->rangeExpr.get());
     }
 
-    // Create loop variable in entry block to avoid stack growth on each iteration
     LLVMValueRef loopVar = createEntryBlockAlloca(currentFn, int32_t_, forStmt->var.c_str());
     LLVMBuildStore(builder_, startVal, loopVar);
 
     (*g_named_values_)[forStmt->var] = loopVar;
     (*g_named_types_)[forStmt->var] = int32_t_;
 
-    // Create basic blocks
     LLVMBasicBlockRef condBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "for_cond");
     LLVMBasicBlockRef bodyBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "for_body");
     LLVMBasicBlockRef incBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "for_inc");
     LLVMBasicBlockRef exitBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "for_exit");
 
-    // Jump to condition
     LLVMBuildBr(builder_, condBB);
 
-    // Condition: i < range
     LLVMPositionBuilderAtEnd(builder_, condBB);
     LLVMValueRef currentVal = LLVMBuildLoad2(builder_, int32_t_, loopVar, "loop_val");
     LLVMValueRef cond = LLVMBuildICmp(builder_, LLVMIntSLT, currentVal, endVal, "for_cond");
     LLVMBuildCondBr(builder_, cond, bodyBB, exitBB);
 
-    // Body
     LLVMPositionBuilderAtEnd(builder_, bodyBB);
     loopStack_.push_back({incBB, exitBB});
     for (size_t i = 0; i < forStmt->body.size(); ++i)
@@ -3122,7 +3036,6 @@ void StatementCodeGen::genForStmt(ForStmt *forStmt, LLVMValueRef putsFn)
         LLVMBuildBr(builder_, incBB);
     }
 
-    // Increment: i++
     LLVMPositionBuilderAtEnd(builder_, incBB);
     LLVMValueRef incrementedVal = LLVMBuildAdd(builder_,
                                                LLVMBuildLoad2(builder_, int32_t_, loopVar, "loop_val"),
@@ -3168,21 +3081,17 @@ void StatementCodeGen::genMatchStmt(MatchStmt *matchStmt)
         throw std::runtime_error("match statement requires an expression to match");
     }
 
-    // Get the value to match
     LLVMValueRef matchValue = expressionCodeGen_->genExpr(matchStmt->expr.get());
     TypeInfo matchType = expressionCodeGen_->inferType(matchStmt->expr.get());
 
-    // Get current function for creating basic blocks
     LLVMValueRef currentFn = LLVMGetBasicBlockParent(LLVMGetInsertBlock(builder_));
     if (!currentFn)
     {
         throw std::runtime_error("match statement generated outside function context");
     }
 
-    // Create merge block for after the match
     LLVMBasicBlockRef mergeBB = LLVMAppendBasicBlockInContext(ctx_, currentFn, "match_merge");
 
-    // Find the wildcard arm (if any) - it should be handled last
     int wildcardIndex = -1;
     for (size_t i = 0; i < matchStmt->arms.size(); ++i)
     {
@@ -3193,7 +3102,6 @@ void StatementCodeGen::genMatchStmt(MatchStmt *matchStmt)
         }
     }
 
-    // Generate code for each arm
     std::vector<LLVMBasicBlockRef> armBlocks;
     std::vector<LLVMBasicBlockRef> nextCheckBlocks;
 
@@ -3206,23 +3114,21 @@ void StatementCodeGen::genMatchStmt(MatchStmt *matchStmt)
         }
     }
 
-    // Generate condition checks and branches
     for (size_t i = 0; i < matchStmt->arms.size(); ++i)
     {
         const MatchArm &arm = matchStmt->arms[i];
 
         if (arm.isWildcard)
         {
-            // Wildcard matches everything - just branch to the arm
+
             LLVMBuildBr(builder_, armBlocks[i]);
         }
         else
         {
-            // Generate comparison
+
             LLVMValueRef patternValue = expressionCodeGen_->genExpr(arm.pattern.get());
             LLVMValueRef cond = nullptr;
 
-            // Generate appropriate comparison based on type
             if (matchType.type == QuarkType::Int || matchType.type == QuarkType::Boolean)
             {
                 cond = LLVMBuildICmp(builder_, LLVMIntEQ, matchValue, patternValue, "match_cmp");
@@ -3233,7 +3139,7 @@ void StatementCodeGen::genMatchStmt(MatchStmt *matchStmt)
             }
             else if (matchType.type == QuarkType::String)
             {
-                // For strings, call strcmp
+
                 LLVMValueRef strcmpFn = LLVMGetNamedFunction(module_, "strcmp");
                 if (!strcmpFn)
                 {
@@ -3247,7 +3153,7 @@ void StatementCodeGen::genMatchStmt(MatchStmt *matchStmt)
             }
             else if (matchType.type == QuarkType::Pointer || matchType.type == QuarkType::Null)
             {
-                // Pointer comparison
+
                 cond = LLVMBuildICmp(builder_, LLVMIntEQ,
                                      LLVMBuildPtrToInt(builder_, matchValue, LLVMInt64TypeInContext(ctx_), "ptr_to_int1"),
                                      LLVMBuildPtrToInt(builder_, patternValue, LLVMInt64TypeInContext(ctx_), "ptr_to_int2"),
@@ -3255,35 +3161,31 @@ void StatementCodeGen::genMatchStmt(MatchStmt *matchStmt)
             }
             else
             {
-                // Default to integer comparison
+
                 cond = LLVMBuildICmp(builder_, LLVMIntEQ, matchValue, patternValue, "match_cmp");
             }
 
-            // Branch based on comparison
             LLVMBasicBlockRef nextBlock = (i < matchStmt->arms.size() - 1) ? nextCheckBlocks[i] : mergeBB;
             LLVMBuildCondBr(builder_, cond, armBlocks[i], nextBlock);
         }
 
-        // Generate arm body
         LLVMPositionBuilderAtEnd(builder_, armBlocks[i]);
         for (auto &stmt : arm.body)
         {
             genStmt(stmt.get(), nullptr);
         }
-        // Branch to merge if not terminated
+
         if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder_)))
         {
             LLVMBuildBr(builder_, mergeBB);
         }
 
-        // Position at next check block for next iteration (if not last and not wildcard)
         if (i < matchStmt->arms.size() - 1 && !arm.isWildcard)
         {
             LLVMPositionBuilderAtEnd(builder_, nextCheckBlocks[i]);
         }
     }
 
-    // Position at merge block for subsequent code
     LLVMPositionBuilderAtEnd(builder_, mergeBB);
 
     if (verbose_)
@@ -3297,7 +3199,6 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt *arrayAssign)
 
     TypeInfo arrayTypeInfo = expressionCodeGen_->inferType(arrayAssign->array.get());
 
-    // Handle list subscript assignment: list[index] = value
     if (arrayTypeInfo.type == QuarkType::List)
     {
         if (verbose_)
@@ -3307,7 +3208,6 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt *arrayAssign)
         LLVMValueRef indexValue = expressionCodeGen_->genExprInt(arrayAssign->index.get());
         LLVMValueRef value = expressionCodeGen_->genExpr(arrayAssign->value.get());
 
-        // Convert value to i8*
         LLVMValueRef valueAsI8Ptr;
         LLVMTypeRef valType = LLVMTypeOf(value);
         LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -3339,7 +3239,6 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt *arrayAssign)
             valueAsI8Ptr = LLVMBuildPointerCast(builder_, value, int8ptr_t_, "val_i8p");
         }
 
-        // Get __quark_list_set function
         LLVMValueRef listSetFn = LLVMGetNamedFunction(module_, "__quark_list_set");
         if (!listSetFn)
         {
@@ -3359,10 +3258,9 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt *arrayAssign)
 
     LLVMValueRef indexValue = expressionCodeGen_->genExprInt(arrayAssign->index.get());
 
-    // Generate the value to assign
     LLVMValueRef value = expressionCodeGen_->genExpr(arrayAssign->value.get());
 
-    LLVMTypeRef elementType = int32_t_; // default
+    LLVMTypeRef elementType = int32_t_;
 
     if (arrayTypeInfo.type == QuarkType::Array)
     {
@@ -3389,13 +3287,11 @@ void StatementCodeGen::genArrayAssignStmt(ArrayAssignStmt *arrayAssign)
 
 LLVMValueRef StatementCodeGen::createEntryBlockAlloca(LLVMValueRef function, LLVMTypeRef type, const char *name)
 {
-    // Get the entry block of the function
+
     LLVMBasicBlockRef entryBlock = LLVMGetEntryBasicBlock(function);
 
-    // Create a new builder for inserting the alloca
     LLVMBuilderRef allocaBuilder = LLVMCreateBuilderInContext(ctx_);
 
-    // Position at the beginning of the entry block
     LLVMValueRef firstInstr = LLVMGetFirstInstruction(entryBlock);
     if (firstInstr)
     {
@@ -3406,10 +3302,8 @@ LLVMValueRef StatementCodeGen::createEntryBlockAlloca(LLVMValueRef function, LLV
         LLVMPositionBuilderAtEnd(allocaBuilder, entryBlock);
     }
 
-    // Create the alloca instruction
     LLVMValueRef alloca = LLVMBuildAlloca(allocaBuilder, type, name);
 
-    // Clean up the temporary builder
     LLVMDisposeBuilder(allocaBuilder);
 
     return alloca;

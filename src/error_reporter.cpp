@@ -119,7 +119,7 @@ std::vector<std::string> ErrorReporter::getSourceLines(const std::string &source
     {
         if (i > 0 && i <= (int)lines.size())
         {
-            result.push_back(lines[i - 1]); // Convert to 0-based indexing
+            result.push_back(lines[i - 1]);
         }
     }
 
@@ -142,7 +142,7 @@ std::string ErrorReporter::normalizeForDisplay(const std::string &line, int tabW
     for (char ch : line)
     {
         if (ch == '\r')
-            continue; // drop CR
+            continue;
         if (ch == '\t')
         {
             int spaces = tabWidth - (col % tabWidth);
@@ -238,7 +238,7 @@ std::string ErrorReporter::formatSourceBlock(const ErrorContext &context)
     }
     else
     {
-        // Fallback to provided source
+
         auto sourceLines = getSourceLines(context.sourceCode, context.location.line, 1);
         if (sourceLines.empty())
             return std::string();
@@ -264,14 +264,13 @@ std::string ErrorReporter::formatSourceBlock(const ErrorContext &context)
         }
     }
 
-    // Gutter
     oss << "   |\n";
     if (!lines.empty() && errIdx > 0)
     {
         std::string prevLine = normalizeForDisplay(lines[errIdx - 1]);
         oss << " " << lineNums[errIdx - 1] << " | " << prevLine << "\n";
     }
-    // Error line
+
     std::string displayLine = normalizeForDisplay(lines.empty() ? std::string() : lines[errIdx]);
     int displayLineNum = lineNums.empty() ? context.location.line : lineNums[errIdx];
     oss << " " << displayLineNum << " | " << displayLine << "\n";
@@ -470,7 +469,6 @@ void ErrorReporter::printSummary()
         return;
     }
 
-    // Fallback to classic display
     if (errorCount_ > 0)
     {
         std::ostringstream oss;

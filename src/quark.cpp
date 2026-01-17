@@ -16,7 +16,6 @@
 #include <fcntl.h>
 #endif
 
-// Helper function to run an executable and clean up afterward
 static int runAndCleanup(const std::filesystem::path &executable)
 {
     std::error_code ec;
@@ -34,7 +33,6 @@ static int runAndCleanup(const std::filesystem::path &executable)
     int code = std::system(command.c_str());
 #endif
 
-    // Clean up the temporary executable
     std::filesystem::remove(executable, ec);
 
     if (code == -1)
@@ -56,7 +54,7 @@ void setupUTF8Console()
 
 int main(int argc, char **argv)
 {
-    // Set up UTF-8 console support
+
     setupUTF8Console();
 
     std::filesystem::path exePath;
@@ -69,7 +67,6 @@ int main(int argc, char **argv)
         exePath.clear();
     }
 
-    // Handle "quark run <file>" command - compile and run a file directly
     if (argc >= 3)
     {
         std::string_view firstArg{argv[1]};
@@ -80,11 +77,9 @@ int main(int argc, char **argv)
         {
             std::string inputFile = argv[2];
 
-            // Set up CLI
             g_cli.setOutputLevel(OutputLevel::NORMAL);
             g_cli.setColorEnabled(true);
 
-            // Check if input file exists
             std::error_code ec;
             if (!std::filesystem::exists(inputFile, ec))
             {
@@ -92,7 +87,6 @@ int main(int argc, char **argv)
                 return 1;
             }
 
-            // Create temp output path
             std::filesystem::path inputPath(inputFile);
             std::filesystem::path tempDir = std::filesystem::temp_directory_path(ec);
             if (ec)
@@ -104,7 +98,6 @@ int main(int argc, char **argv)
             std::filesystem::path outputPath = tempDir / (inputPath.stem().string() + "_quark_temp");
 #endif
 
-            // Create compiler
             QuarkCompilerHandle *compiler = quark_compiler_create();
             if (!compiler)
             {
@@ -114,7 +107,6 @@ int main(int argc, char **argv)
 
             quark_compiler_set_console_echo(compiler, 1);
 
-            // Set up options
             QuarkCompilerOptions options{};
             std::string inputPathStr = inputPath.string();
             std::string outputPathStr = outputPath.string();
@@ -128,7 +120,6 @@ int main(int argc, char **argv)
             options.verbosity = static_cast<int>(OutputLevel::NORMAL);
             options.color_output = 1;
 
-            // Add exe directory to library paths
             std::vector<std::string> libraryPaths;
             if (!exePath.empty())
             {
@@ -147,7 +138,6 @@ int main(int argc, char **argv)
             options.clear_cache = 0;
             options.cache_dir = "";
 
-            // Compile
             int status = quark_compiler_compile_file(compiler, &options);
             quark_compiler_destroy(compiler);
 
@@ -156,7 +146,6 @@ int main(int argc, char **argv)
                 return 1;
             }
 
-            // Run and clean up
             g_cli.println("");
             return runAndCleanup(outputPath);
         }
@@ -172,7 +161,6 @@ int main(int argc, char **argv)
             std::string firstArgLower(firstArg);
             std::transform(firstArgLower.begin(), firstArgLower.end(), firstArgLower.begin(), ::tolower);
 
-            // Check if second argument is a .k file - if so, use compiler not package manager
             bool hasKFileArg = false;
             if (argc >= 3)
             {
@@ -183,7 +171,6 @@ int main(int argc, char **argv)
                 }
             }
 
-            // "build" and "run" with .k file go to compiler, not package manager
             if ((firstArgLower == "build" || firstArgLower == "run") && hasKFileArg)
             {
                 isPackageCommand = false;
@@ -219,7 +206,6 @@ int main(int argc, char **argv)
         }
     }
 
-    // Parse command line arguments
     CLIArgs args = CLIArgs::parse(argc, argv);
 
     try
@@ -264,7 +250,6 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    // Validate arguments
     if (!args.validate(g_cli))
     {
         g_cli.println("");

@@ -3,15 +3,15 @@
 
 namespace lsp {
 
-// Static token for EOF fallback
+
 static Token eofToken = {TokenKind::EndOfFile, "", 0.0, {}};
 
 LspParser::LspParser(const std::vector<Token>& tokens, const std::string& source)
     : tokens_(tokens), source_(source) {}
 
-// ============================================================================
-// Token navigation
-// ============================================================================
+
+
+
 
 const Token& LspParser::peek(size_t offset) const {
     size_t idx = current_ + offset;
@@ -61,9 +61,9 @@ bool LspParser::match(std::initializer_list<TokenKind> kinds) {
     return false;
 }
 
-// ============================================================================
-// Error handling
-// ============================================================================
+
+
+
 
 void LspParser::addError(const std::string& message, const SourceRange& range, 
                          const std::string& code) {
@@ -86,12 +86,12 @@ void LspParser::synchronize() {
     advance();
     
     while (!isAtEnd()) {
-        // After a semicolon, we can start a new statement
+        
         if (previous().kind == TokenKind::Semicolon) {
             return;
         }
         
-        // At statement-starting keywords, we can recover
+        
         switch (peek().kind) {
             case TokenKind::KwModule:
             case TokenKind::KwImport:
@@ -167,9 +167,9 @@ std::vector<Diagnostic> LspParser::getDiagnostics() const {
     return diags;
 }
 
-// ============================================================================
-// Helper predicates
-// ============================================================================
+
+
+
 
 bool LspParser::isTypeStart() const {
     switch (peek().kind) {
@@ -261,9 +261,9 @@ std::string LspParser::getTypeString(const TypeExpr* type) const {
     return "unknown";
 }
 
-// ============================================================================
-// Program parsing
-// ============================================================================
+
+
+
 
 std::unique_ptr<Program> LspParser::parse() {
     auto program = std::make_unique<Program>();
@@ -291,12 +291,12 @@ std::unique_ptr<Program> LspParser::parse() {
     return program;
 }
 
-// ============================================================================
-// Statement parsing
-// ============================================================================
+
+
+
 
 std::unique_ptr<Stmt> LspParser::parseStatement() {
-    // Skip error tokens
+    
     while (check(TokenKind::Error)) {
         addError("Unexpected token", peek().range);
         advance();
@@ -341,7 +341,7 @@ std::unique_ptr<Stmt> LspParser::parseStatement() {
             break;
     }
     
-    // Check for type-led statements (function def or typed var decl)
+    
     if (isTypeStart()) {
         SourceRange startRange = peek().range;
         auto type = parseType();
@@ -350,12 +350,12 @@ std::unique_ptr<Stmt> LspParser::parseStatement() {
             std::string name = peek().text;
             advance();
             
-            // Function definition
+            
             if (check(TokenKind::LeftParen)) {
                 return parseFunctionDef(std::move(type), name, startRange);
             }
             
-            // Typed variable declaration
+            
             if (check(TokenKind::Equal)) {
                 advance();
                 auto init = parseExpression();
@@ -373,13 +373,13 @@ std::unique_ptr<Stmt> LspParser::parseStatement() {
         }
     }
     
-    // Otherwise, it's an assignment or expression statement
+    
     return parseAssignOrExprStmt();
 }
 
 std::unique_ptr<ModuleDecl> LspParser::parseModuleDecl() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'module'
+    advance(); 
     
     auto decl = std::make_unique<ModuleDecl>("");
     
@@ -397,12 +397,12 @@ std::unique_ptr<ModuleDecl> LspParser::parseModuleDecl() {
 
 std::unique_ptr<ImportStmt> LspParser::parseImportStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'import'
+    advance(); 
     
     auto stmt = std::make_unique<ImportStmt>();
     
     if (match(TokenKind::LeftBrace)) {
-        // import { mod1, mod2 }
+        
         while (!check(TokenKind::RightBrace) && !isAtEnd()) {
             if (check(TokenKind::Identifier)) {
                 std::string path = peek().text;
@@ -425,7 +425,7 @@ std::unique_ptr<ImportStmt> LspParser::parseImportStmt() {
         }
         expect(TokenKind::RightBrace, "Expected '}' after import list");
     } else if (check(TokenKind::Identifier)) {
-        // import mod or import mod/submod
+        
         std::string path = peek().text;
         advance();
         while (match(TokenKind::Slash)) {
@@ -449,11 +449,11 @@ std::unique_ptr<ImportStmt> LspParser::parseImportStmt() {
 
 std::unique_ptr<ExternBlock> LspParser::parseExternBlock() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'extern'
+    advance(); 
     
     auto block = std::make_unique<ExternBlock>();
     
-    // Expect "C" string literal
+    
     if (!check(TokenKind::String) || peek().text != "C") {
         addError("Expected '\"C\"' after 'extern'");
     } else {
@@ -461,7 +461,7 @@ std::unique_ptr<ExternBlock> LspParser::parseExternBlock() {
     }
     
     if (match(TokenKind::LeftBrace)) {
-        // extern "C" { ... }
+        
         while (!check(TokenKind::RightBrace) && !isAtEnd()) {
             auto decl = parseExternDecl();
             if (decl) {
@@ -470,7 +470,7 @@ std::unique_ptr<ExternBlock> LspParser::parseExternBlock() {
         }
         expect(TokenKind::RightBrace, "Expected '}' after extern block");
     } else {
-        // Single extern declaration
+        
         auto decl = parseExternDecl();
         if (decl) {
             block->declarations.push_back(std::move(decl));
@@ -484,7 +484,7 @@ std::unique_ptr<ExternBlock> LspParser::parseExternBlock() {
 std::unique_ptr<Stmt> LspParser::parseExternDecl() {
     SourceRange startRange = peek().range;
     
-    // extern struct Name;
+    
     if (match(TokenKind::KwStruct)) {
         std::string name;
         if (check(TokenKind::Identifier)) {
@@ -500,7 +500,7 @@ std::unique_ptr<Stmt> LspParser::parseExternDecl() {
         return decl;
     }
     
-    // Parse type
+    
     if (!isTypeStart()) {
         addError("Expected type in extern declaration");
         synchronizeTo({TokenKind::Semicolon, TokenKind::RightBrace});
@@ -520,22 +520,22 @@ std::unique_ptr<Stmt> LspParser::parseExternDecl() {
     std::string name = peek().text;
     advance();
     
-    // Function declaration
+    
     if (match(TokenKind::LeftParen)) {
         auto decl = std::make_unique<ExternFunctionDecl>();
         decl->name = name;
         decl->returnType = std::move(type);
         
-        // Parse parameters
+        
         while (!check(TokenKind::RightParen) && !isAtEnd()) {
-            // Check for variadic
+            
             if (match(TokenKind::Range)) {
                 decl->isVariadic = true;
-                if (match(TokenKind::Dot)) {} // Consume extra dot if present
+                if (match(TokenKind::Dot)) {} 
                 break;
             }
             if (check(TokenKind::Dot)) {
-                // Handle ... as three dots
+                
                 advance(); advance(); advance();
                 decl->isVariadic = true;
                 break;
@@ -549,13 +549,13 @@ std::unique_ptr<Stmt> LspParser::parseExternDecl() {
                 advance();
                 
                 if (match(TokenKind::Colon)) {
-                    // name: type
+                    
                     paramName = first;
                     paramType = parseType();
                 } else {
-                    // Just a type name
+                    
                     paramType = std::make_unique<SimpleTypeExpr>(first);
-                    // Handle pointer suffixes
+                    
                     while (check(TokenKind::Star)) {
                         auto ptr = std::make_unique<PointerTypeExpr>(std::move(paramType));
                         paramType = std::move(ptr);
@@ -582,7 +582,7 @@ std::unique_ptr<Stmt> LspParser::parseExternDecl() {
         return decl;
     }
     
-    // Variable declaration
+    
     expect(TokenKind::Semicolon, "Expected ';' after extern variable");
     
     auto decl = std::make_unique<ExternVarDecl>();
@@ -594,7 +594,7 @@ std::unique_ptr<Stmt> LspParser::parseExternDecl() {
 
 std::unique_ptr<StructDef> LspParser::parseStructDef() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'struct'
+    advance(); 
     
     auto def = std::make_unique<StructDef>();
     
@@ -605,7 +605,7 @@ std::unique_ptr<StructDef> LspParser::parseStructDef() {
         addError("Expected struct name");
     }
     
-    // Check for inheritance: struct Child : Parent
+    
     if (match(TokenKind::Colon)) {
         if (check(TokenKind::Identifier)) {
             def->parentName = peek().text;
@@ -617,9 +617,9 @@ std::unique_ptr<StructDef> LspParser::parseStructDef() {
     
     expect(TokenKind::LeftBrace, "Expected '{' after struct name");
     
-    // Parse struct body
+    
     while (!check(TokenKind::RightBrace) && !isAtEnd()) {
-        // Data block
+        
         if (match(TokenKind::KwData)) {
             expect(TokenKind::LeftBrace, "Expected '{' after 'data'");
             
@@ -638,7 +638,7 @@ std::unique_ptr<StructDef> LspParser::parseStructDef() {
                     def->fields.push_back(std::move(field));
                 }
                 
-                // Allow comma or semicolon separator
+                
                 if (!match(TokenKind::Comma) && !match(TokenKind::Semicolon)) {
                     if (!check(TokenKind::RightBrace)) {
                         addError("Expected ',' or ';' after field");
@@ -648,14 +648,14 @@ std::unique_ptr<StructDef> LspParser::parseStructDef() {
             
             expect(TokenKind::RightBrace, "Expected '}' after data block");
         }
-        // Method definition
+        
         else if (isTypeStart() || check(TokenKind::KwExtend) || check(TokenKind::KwImpl)) {
             MethodDef method;
             method.range = peek().range;
             
             method.isExtend = match(TokenKind::KwExtend);
             if (!method.isExtend) {
-                match(TokenKind::KwImpl); // Optional impl keyword
+                match(TokenKind::KwImpl); 
             }
             
             method.returnType = parseType();
@@ -688,7 +688,7 @@ std::unique_ptr<StructDef> LspParser::parseStructDef() {
 
 std::unique_ptr<ImplBlock> LspParser::parseImplBlock() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'impl'
+    advance(); 
     
     auto impl = std::make_unique<ImplBlock>();
     
@@ -744,9 +744,9 @@ std::unique_ptr<FunctionDef> LspParser::parseFunctionDef(
     
     expect(TokenKind::LeftParen, "Expected '(' after function name");
     
-    // Parse parameters
+    
     while (!check(TokenKind::RightParen) && !isAtEnd()) {
-        // Check for variadic
+        
         if (match(TokenKind::Range)) {
             func->isVariadic = true;
             break;
@@ -781,7 +781,7 @@ std::unique_ptr<FunctionDef> LspParser::parseFunctionDef(
 
 std::unique_ptr<VarDecl> LspParser::parseVarDecl() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'var'
+    advance(); 
     
     auto decl = std::make_unique<VarDecl>();
     decl->isVar = true;
@@ -793,7 +793,7 @@ std::unique_ptr<VarDecl> LspParser::parseVarDecl() {
         addError("Expected variable name");
     }
     
-    // Optional type annotation
+    
     if (match(TokenKind::Colon)) {
         decl->type = parseType();
     }
@@ -808,7 +808,7 @@ std::unique_ptr<VarDecl> LspParser::parseVarDecl() {
 
 std::unique_ptr<MapDecl> LspParser::parseMapDecl() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'map'
+    advance(); 
     
     auto decl = std::make_unique<MapDecl>();
     
@@ -830,7 +830,7 @@ std::unique_ptr<MapDecl> LspParser::parseMapDecl() {
 
 std::unique_ptr<ListDecl> LspParser::parseListDecl() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'list'
+    advance(); 
     
     auto decl = std::make_unique<ListDecl>();
     
@@ -852,7 +852,7 @@ std::unique_ptr<ListDecl> LspParser::parseListDecl() {
 
 std::unique_ptr<IfStmt> LspParser::parseIfStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'if'
+    advance(); 
     
     auto stmt = std::make_unique<IfStmt>();
     
@@ -862,14 +862,14 @@ std::unique_ptr<IfStmt> LspParser::parseIfStmt() {
     
     stmt->thenBody = parseBlock();
     
-    // Parse elif clauses
+    
     while (check(TokenKind::KwElif) || 
            (check(TokenKind::KwElse) && peek(1).kind == TokenKind::KwIf)) {
         if (match(TokenKind::KwElif)) {
-            // elif (cond) { ... }
+            
         } else {
-            advance(); // 'else'
-            advance(); // 'if'
+            advance(); 
+            advance(); 
         }
         
         expect(TokenKind::LeftParen, "Expected '(' after 'elif'");
@@ -880,7 +880,7 @@ std::unique_ptr<IfStmt> LspParser::parseIfStmt() {
         stmt->elifs.emplace_back(std::move(elifCond), std::move(elifBody));
     }
     
-    // Parse else clause
+    
     if (match(TokenKind::KwElse)) {
         stmt->elseBody = parseBlock();
     }
@@ -891,7 +891,7 @@ std::unique_ptr<IfStmt> LspParser::parseIfStmt() {
 
 std::unique_ptr<WhileStmt> LspParser::parseWhileStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'while'
+    advance(); 
     
     auto stmt = std::make_unique<WhileStmt>();
     
@@ -907,21 +907,21 @@ std::unique_ptr<WhileStmt> LspParser::parseWhileStmt() {
 
 std::unique_ptr<ForStmt> LspParser::parseForStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'for'
+    advance(); 
     
     auto stmt = std::make_unique<ForStmt>();
     
     expect(TokenKind::LeftParen, "Expected '(' after 'for'");
     
-    // Determine loop style: range-based or C-style
-    // Range: for (var i in expr) or for (i in expr) or for (type i in expr)
-    // C-style: for (init; cond; incr)
     
-    // Save position for backtracking
+    
+    
+    
+    
     size_t savedPos = current_;
     bool isRangeBased = false;
     
-    // Try to detect range-based
+    
     if (match(TokenKind::KwVar)) {
         stmt->isVar = true;
         if (check(TokenKind::Identifier)) {
@@ -932,7 +932,7 @@ std::unique_ptr<ForStmt> LspParser::parseForStmt() {
             }
         }
     } else if (isTypeStart()) {
-        // Could be type name in expr or C-style init
+        
         auto type = parseType();
         if (check(TokenKind::Identifier)) {
             std::string name = peek().text;
@@ -942,7 +942,7 @@ std::unique_ptr<ForStmt> LspParser::parseForStmt() {
                 stmt->varType = std::move(type);
                 isRangeBased = true;
             } else {
-                // C-style: reset and parse differently
+                
                 current_ = savedPos;
             }
         } else {
@@ -960,26 +960,26 @@ std::unique_ptr<ForStmt> LspParser::parseForStmt() {
     }
     
     if (isRangeBased) {
-        // Range-based for loop
+        
         stmt->iterable = parseExpression();
     } else {
-        // C-style for loop
+        
         stmt->isCStyle = true;
         
-        // Init clause
+        
         if (!check(TokenKind::Semicolon)) {
             stmt->init = parseStatement();
         } else {
-            advance(); // consume ';'
+            advance(); 
         }
         
-        // Condition
+        
         if (!check(TokenKind::Semicolon)) {
             stmt->condition = parseExpression();
         }
         expect(TokenKind::Semicolon, "Expected ';' after for condition");
         
-        // Increment
+        
         if (!check(TokenKind::RightParen)) {
             stmt->increment = parseExpression();
         }
@@ -994,7 +994,7 @@ std::unique_ptr<ForStmt> LspParser::parseForStmt() {
 
 std::unique_ptr<MatchStmt> LspParser::parseMatchStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'match'
+    advance(); 
     
     auto stmt = std::make_unique<MatchStmt>();
     stmt->expression = parseExpression();
@@ -1005,7 +1005,7 @@ std::unique_ptr<MatchStmt> LspParser::parseMatchStmt() {
         MatchArm arm;
         arm.range = peek().range;
         
-        // Wildcard pattern
+        
         if (match(TokenKind::Underscore)) {
             arm.isWildcard = true;
         } else {
@@ -1014,7 +1014,7 @@ std::unique_ptr<MatchStmt> LspParser::parseMatchStmt() {
         
         expect(TokenKind::FatArrow, "Expected '=>' after pattern");
         
-        // Body can be a block or a single statement
+        
         if (check(TokenKind::LeftBrace)) {
             arm.body = parseBlock();
         } else {
@@ -1027,7 +1027,7 @@ std::unique_ptr<MatchStmt> LspParser::parseMatchStmt() {
         arm.range = makeRange(arm.range, previous().range);
         stmt->arms.push_back(std::move(arm));
         
-        match(TokenKind::Comma); // Optional trailing comma
+        match(TokenKind::Comma); 
     }
     
     expect(TokenKind::RightBrace, "Expected '}' after match arms");
@@ -1037,7 +1037,7 @@ std::unique_ptr<MatchStmt> LspParser::parseMatchStmt() {
 
 std::unique_ptr<ReturnStmt> LspParser::parseReturnStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'ret'
+    advance(); 
     
     auto stmt = std::make_unique<ReturnStmt>();
     
@@ -1052,7 +1052,7 @@ std::unique_ptr<ReturnStmt> LspParser::parseReturnStmt() {
 
 std::unique_ptr<BreakStmt> LspParser::parseBreakStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'break'
+    advance(); 
     
     auto stmt = std::make_unique<BreakStmt>();
     match(TokenKind::Semicolon);
@@ -1062,7 +1062,7 @@ std::unique_ptr<BreakStmt> LspParser::parseBreakStmt() {
 
 std::unique_ptr<ContinueStmt> LspParser::parseContinueStmt() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'continue'
+    advance(); 
     
     auto stmt = std::make_unique<ContinueStmt>();
     match(TokenKind::Semicolon);
@@ -1073,7 +1073,7 @@ std::unique_ptr<ContinueStmt> LspParser::parseContinueStmt() {
 std::unique_ptr<Stmt> LspParser::parseAssignOrExprStmt() {
     SourceRange startRange = peek().range;
     
-    // Handle deref assignment: *ptr = value
+    
     if (match(TokenKind::Star)) {
         auto ptr = parseUnary();
         if (match(TokenKind::Equal)) {
@@ -1085,8 +1085,8 @@ std::unique_ptr<Stmt> LspParser::parseAssignOrExprStmt() {
             stmt->range = makeRange(startRange, previous().range);
             return stmt;
         }
-        // If not assignment, it was a dereference expression
-        // Create a unary expression and continue
+        
+        
         auto deref = std::make_unique<UnaryExpr>("*", std::move(ptr));
         auto expr = parsePostfixContinuation(std::move(deref));
         
@@ -1097,10 +1097,10 @@ std::unique_ptr<Stmt> LspParser::parseAssignOrExprStmt() {
         return exprStmt;
     }
     
-    // Parse expression
+    
     auto expr = parseExpression();
     
-    // Check for assignment
+    
     std::string op;
     if (match(TokenKind::Equal)) op = "=";
     else if (match(TokenKind::PlusEqual)) op = "+=";
@@ -1117,7 +1117,7 @@ std::unique_ptr<Stmt> LspParser::parseAssignOrExprStmt() {
     if (!op.empty()) {
         auto value = parseExpression();
         
-        // Determine what kind of assignment this is
+        
         if (auto* ident = dynamic_cast<IdentifierExpr*>(expr.get())) {
             auto stmt = std::make_unique<AssignStmt>();
             stmt->name = ident->name;
@@ -1151,7 +1151,7 @@ std::unique_ptr<Stmt> LspParser::parseAssignOrExprStmt() {
         addError("Invalid assignment target");
     }
     
-    // Expression statement
+    
     auto stmt = std::make_unique<ExprStmt>();
     stmt->expression = std::move(expr);
     match(TokenKind::Semicolon);
@@ -1178,9 +1178,9 @@ std::vector<std::unique_ptr<Stmt>> LspParser::parseBlock() {
     return stmts;
 }
 
-// ============================================================================
-// Expression parsing (precedence climbing)
-// ============================================================================
+
+
+
 
 std::unique_ptr<Expr> LspParser::parseExpression() {
     return parseLogicalOr();
@@ -1381,7 +1381,7 @@ std::unique_ptr<Expr> LspParser::parseUnary() {
     return parsePostfix();
 }
 
-// Helper for continuing postfix parsing after an already-parsed expression
+
 std::unique_ptr<Expr> LspParser::parsePostfixContinuation(std::unique_ptr<Expr> left) {
     while (true) {
         if (match(TokenKind::Dot)) {
@@ -1392,7 +1392,7 @@ std::unique_ptr<Expr> LspParser::parsePostfixContinuation(std::unique_ptr<Expr> 
             std::string member = peek().text;
             advance();
             
-            // Check for method call
+            
             if (match(TokenKind::LeftParen)) {
                 auto call = std::make_unique<MethodCallExpr>();
                 call->object = std::move(left);
@@ -1420,7 +1420,7 @@ std::unique_ptr<Expr> LspParser::parsePostfixContinuation(std::unique_ptr<Expr> 
             left = std::move(indexExpr);
         }
         else if (match(TokenKind::Range)) {
-            auto end = parseAdditive();  // Range has lower precedence than arithmetic
+            auto end = parseAdditive();  
             
             auto rangeExpr = std::make_unique<RangeExpr>();
             rangeExpr->start = std::move(left);
@@ -1444,7 +1444,7 @@ std::unique_ptr<Expr> LspParser::parsePostfix() {
 std::unique_ptr<Expr> LspParser::parsePrimary() {
     SourceRange startRange = peek().range;
     
-    // Number literal
+    
     if (check(TokenKind::Number)) {
         auto lit = std::make_unique<NumberLiteral>(peek().numberValue, false);
         lit->range = peek().range;
@@ -1452,7 +1452,7 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
         return lit;
     }
     
-    // Float literal
+    
     if (check(TokenKind::Float)) {
         auto lit = std::make_unique<NumberLiteral>(peek().numberValue, true);
         lit->range = peek().range;
@@ -1460,7 +1460,7 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
         return lit;
     }
     
-    // String literal
+    
     if (check(TokenKind::String)) {
         auto lit = std::make_unique<StringLiteral>(peek().text);
         lit->range = peek().range;
@@ -1468,7 +1468,7 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
         return lit;
     }
     
-    // Char literal
+    
     if (check(TokenKind::Char)) {
         auto lit = std::make_unique<CharLiteral>(peek().text.empty() ? '\0' : peek().text[0]);
         lit->range = peek().range;
@@ -1476,7 +1476,7 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
         return lit;
     }
     
-    // Boolean literals
+    
     if (match(TokenKind::True)) {
         auto lit = std::make_unique<BoolLiteral>(true);
         lit->range = previous().range;
@@ -1488,38 +1488,38 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
         return lit;
     }
     
-    // Null literal
+    
     if (match(TokenKind::Null)) {
         auto lit = std::make_unique<NullLiteral>();
         lit->range = previous().range;
         return lit;
     }
     
-    // This expression
+    
     if (match(TokenKind::KwThis)) {
         auto expr = std::make_unique<ThisExpr>();
         expr->range = previous().range;
         return expr;
     }
     
-    // Array literal: [...]
+    
     if (check(TokenKind::LeftBracket)) {
         return parseArrayLiteral();
     }
     
-    // Map literal: map { ... } or just { ... } if context allows
+    
     if (check(TokenKind::KwMap) && peek(1).kind == TokenKind::LeftBrace) {
         return parseMapLiteral();
     }
     
-    // List literal: list[...]
+    
     if (check(TokenKind::KwList) && peek(1).kind == TokenKind::LeftBracket) {
         return parseListLiteral();
     }
     
-    // Parenthesized expression or cast
+    
     if (match(TokenKind::LeftParen)) {
-        // Check for cast: (type)expr
+        
         if (isTypeStart()) {
             size_t savedPos = current_;
             auto type = parseType();
@@ -1531,7 +1531,7 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
                 cast->range = makeRange(startRange, previous().range);
                 return cast;
             }
-            // Not a cast, reset and parse as expression
+            
             current_ = savedPos;
         }
         
@@ -1540,17 +1540,17 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
         return expr;
     }
     
-    // Identifier (variable, function call, struct literal, or static call)
+    
     if (check(TokenKind::Identifier)) {
         std::string name = peek().text;
         advance();
         
-        // Struct literal: Name { ... }
+        
         if (check(TokenKind::LeftBrace)) {
             return parseStructLiteral(name, startRange);
         }
         
-        // Function call: name(...)
+        
         if (match(TokenKind::LeftParen)) {
             auto call = std::make_unique<CallExpr>();
             call->callee = std::make_unique<IdentifierExpr>(name);
@@ -1560,19 +1560,19 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
             return call;
         }
         
-        // Just an identifier
+        
         auto ident = std::make_unique<IdentifierExpr>(name);
         ident->range = makeRange(startRange, previous().range);
         return ident;
     }
     
-    // Map literal with brace: { key: value } (for map contexts)
+    
     if (check(TokenKind::LeftBrace)) {
-        // Could be map literal or empty block - assume map literal in expression context
+        
         return parseMapLiteral();
     }
     
-    // Error recovery: create an error expression
+    
     addError("Expected expression");
     auto err = std::make_unique<ErrorExpr>("Expected expression");
     err->range = peek().range;
@@ -1583,7 +1583,7 @@ std::unique_ptr<Expr> LspParser::parsePrimary() {
 
 std::unique_ptr<Expr> LspParser::parseArrayLiteral() {
     SourceRange startRange = peek().range;
-    advance(); // consume '['
+    advance(); 
     
     auto arr = std::make_unique<ArrayLiteral>();
     
@@ -1603,7 +1603,7 @@ std::unique_ptr<Expr> LspParser::parseArrayLiteral() {
 std::unique_ptr<Expr> LspParser::parseMapLiteral() {
     SourceRange startRange = peek().range;
     
-    // Skip 'map' keyword if present
+    
     match(TokenKind::KwMap);
     
     expect(TokenKind::LeftBrace, "Expected '{' for map literal");
@@ -1629,7 +1629,7 @@ std::unique_ptr<Expr> LspParser::parseMapLiteral() {
 
 std::unique_ptr<Expr> LspParser::parseListLiteral() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'list'
+    advance(); 
     
     expect(TokenKind::LeftBracket, "Expected '[' after 'list'");
     
@@ -1651,7 +1651,7 @@ std::unique_ptr<Expr> LspParser::parseListLiteral() {
 std::unique_ptr<StructLiteral> LspParser::parseStructLiteral(
     const std::string& name, const SourceRange& startRange) {
     
-    advance(); // consume '{'
+    advance(); 
     
     auto lit = std::make_unique<StructLiteral>();
     lit->structName = name;
@@ -1694,20 +1694,20 @@ std::vector<std::unique_ptr<Expr>> LspParser::parseArguments() {
     return args;
 }
 
-// ============================================================================
-// Type parsing
-// ============================================================================
+
+
+
 
 std::unique_ptr<TypeExpr> LspParser::parseType() {
     auto baseType = parseBaseType();
     
-    // Check for array type: type[]
+    
     if (match(TokenKind::LeftBracket)) {
         expect(TokenKind::RightBracket, "Expected ']' for array type");
         return std::make_unique<ArrayTypeExpr>(std::move(baseType));
     }
     
-    // Check for pointer type: type*, type**, etc.
+    
     int pointerDepth = 0;
     while (match(TokenKind::Star)) {
         pointerDepth++;
@@ -1750,13 +1750,13 @@ std::unique_ptr<TypeExpr> LspParser::parseBaseType() {
 
 std::unique_ptr<FunctionPointerTypeExpr> LspParser::parseFunctionPointerType() {
     SourceRange startRange = peek().range;
-    advance(); // consume 'fn'
+    advance(); 
     
     auto fnType = std::make_unique<FunctionPointerTypeExpr>();
     
     expect(TokenKind::LeftParen, "Expected '(' after 'fn'");
     
-    // Parse parameter types
+    
     while (!check(TokenKind::RightParen) && !isAtEnd()) {
         fnType->paramTypes.push_back(parseType());
         
@@ -1767,9 +1767,9 @@ std::unique_ptr<FunctionPointerTypeExpr> LspParser::parseFunctionPointerType() {
     
     expect(TokenKind::RightParen, "Expected ')' after parameter types");
     
-    // Return type is optional (defaults to void if not specified)
-    // Note: The old fn(params) -> return syntax is deprecated
-    // Function pointers now use void* and &funcName
+    
+    
+    
     fnType->range = makeRange(startRange, previous().range);
     
     return fnType;
@@ -1799,4 +1799,4 @@ std::vector<std::pair<std::string, std::unique_ptr<TypeExpr>>> LspParser::parseP
     return params;
 }
 
-} // namespace lsp
+} 

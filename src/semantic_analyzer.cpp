@@ -102,12 +102,11 @@ void SemanticAnalyzer::registerBuiltinFunctions()
     addBuiltin("format", "str", {}, true);
     addBuiltin("to_string", "str", {}, true);
     addBuiltin("to_int", "int", {}, true);
-    
-    // Convenient aliases for common functions
-    addBuiltin("parse_int", "int", {}, true);     // alias for to_int
-    addBuiltin("parseInt", "int", {}, true);      // JavaScript-style alias
-    addBuiltin("toString", "str", {}, true);      // JavaScript-style alias
-    
+
+    addBuiltin("parse_int", "int", {}, true);
+    addBuiltin("parseInt", "int", {}, true);
+    addBuiltin("toString", "str", {}, true);
+
     addBuiltin("str_len", "int", {{"s", "str"}}, false);
     addBuiltin("str_length", "int", {{"s", "str"}}, false);
     addBuiltin("str_slice", "str", {{"s", "str"}, {"start", "int"}, {"end", "int"}}, false);
@@ -151,7 +150,6 @@ void SemanticAnalyzer::registerBuiltinFunctions()
     addBuiltin("clamp_f64", "double", {{"x", "double"}, {"lo", "double"}, {"hi", "double"}}, false);
     addBuiltin("clamp", "double", {}, true);
 
-    // Memory management builtins
     addBuiltin("alloc", "void*", {{"size", "int"}}, false);
     addBuiltin("free", "void", {{"ptr", "void*"}}, false);
     addBuiltin("realloc", "void*", {{"ptr", "void*"}, {"new_size", "int"}}, false);
@@ -174,7 +172,7 @@ bool SemanticAnalyzer::analyze(ProgramAST *program)
     {
         for (const auto &err : errors_)
         {
-            // Get source code from the file where the error occurred
+
             std::string sourceCode = sourceCode_;
             if (auto file = sourceManager_.getFile(err.location.filename))
             {
@@ -197,7 +195,7 @@ bool SemanticAnalyzer::analyze(ProgramAST *program)
 
     for (const auto &err : errors_)
     {
-        // Get source code from the file where the error occurred
+
         std::string sourceCode = sourceCode_;
         if (auto file = sourceManager_.getFile(err.location.filename))
         {
@@ -384,8 +382,8 @@ void SemanticAnalyzer::collectExternVariable(ExternVarAST *var)
     sym.typeName = var->typeName;
     sym.declLocation = var->location;
     sym.isExtern = true;
-    sym.isInitialized = true;              // Extern variables are initialized externally
-    sym.type = resolveType(var->typeName); // Set full TypeInfo (including .type for pointer checks)
+    sym.isInitialized = true;
+    sym.type = resolveType(var->typeName);
     sym.resolvedType = sym.type.type;
 
     symbolTable_.globalScope()->declare(var->name, sym);
@@ -429,8 +427,7 @@ void SemanticAnalyzer::analyzeStmt(StmtAST *stmt)
     }
     else if (auto *modDecl = dynamic_cast<ModuleDeclStmt *>(stmt))
     {
-        // Module declaration - store the module name for this file
-        // This is informational for now - used by the module system
+
         if (verbose_)
         {
             printf("[semantic] Module declaration: %s\n", modDecl->moduleName.c_str());
@@ -617,7 +614,6 @@ void SemanticAnalyzer::analyzeVarDecl(VarDeclStmt *stmt)
 
     TypeInfo targetType = resolveType(declaredType);
 
-    // For function pointer types inferred from initializer, preserve the funcPtrInfo
     if (initType.type == QuarkType::FunctionPointer && initType.funcPtrInfo)
     {
         targetType.funcPtrInfo = initType.funcPtrInfo;
@@ -639,7 +635,7 @@ void SemanticAnalyzer::analyzeVarDecl(VarDeclStmt *stmt)
     varSym.elementType = targetType.elementType;
     varSym.isInitialized = (stmt->init != nullptr);
     varSym.declLocation = stmt->location;
-    varSym.type = targetType; // Store full TypeInfo including funcPtrInfo
+    varSym.type = targetType;
 
     if (verbose_)
     {
@@ -742,7 +738,6 @@ void SemanticAnalyzer::analyzeArrayAssign(ArrayAssignStmt *stmt)
 
     TypeInfo indexType = analyzeExpr(stmt->index.get());
 
-    // For maps, index must be string; for arrays/pointers/lists, index must be int
     if (arrayType.type == QuarkType::Map)
     {
         if (indexType.type != QuarkType::String)
@@ -760,10 +755,9 @@ void SemanticAnalyzer::analyzeArrayAssign(ArrayAssignStmt *stmt)
 
     TypeInfo valueType = analyzeExpr(stmt->value.get());
 
-    // For maps and lists, value can be any type
     if (arrayType.type == QuarkType::Map || arrayType.type == QuarkType::List)
     {
-        return; // Accept any value type
+        return;
     }
 
     TypeInfo elementType;
@@ -972,7 +966,6 @@ TypeInfo SemanticAnalyzer::analyzeExpr(ExprAST *expr)
         return TypeInfo(QuarkType::Double, expr->location);
     }
 
-    // Handle float literal (e.g., 1.0f)
     if (auto *f = dynamic_cast<FloatLiteralExpr *>(expr))
     {
         return TypeInfo(QuarkType::Float, expr->location);
@@ -1097,22 +1090,21 @@ TypeInfo SemanticAnalyzer::analyzeCall(CallExprAST *expr)
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
 
-    // Check if this is a function pointer variable (either FunctionPointer type or void*)
     if (func->kind == Symbol::Kind::Variable &&
         (func->type.type == QuarkType::FunctionPointer || func->type.type == QuarkType::Pointer))
     {
-        // It's a function pointer call - analyze arguments
+
         for (auto &arg : expr->args)
         {
             analyzeExpr(arg.get());
         }
-        // Return the function pointer's return type if we have it
+
         if (func->type.funcPtrInfo)
         {
             QuarkType retType = IntegerTypeUtils::stringToQuarkType(func->type.funcPtrInfo->returnType);
             return TypeInfo(retType, expr->location);
         }
-        // For void* we don't know the return type
+
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
 
@@ -1361,7 +1353,7 @@ TypeInfo SemanticAnalyzer::analyzeMethodCall(MethodCallExpr *expr)
             }
             if (expr->methodName == "get")
             {
-                // List get returns unknown type (could be anything)
+
                 return TypeInfo(QuarkType::String, expr->location);
             }
             else if (expr->methodName == "len" || expr->methodName == "length")
@@ -1411,15 +1403,12 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
 {
     Symbol *structSym = symbolTable_.lookup(expr->structName);
 
-    // Check if this is actually a variable or parameter (instance method call parsed as static)
     if (structSym && (structSym->kind == Symbol::Kind::Variable || structSym->kind == Symbol::Kind::Parameter))
     {
-        // This is an instance method call, not a static call
-        // Treat it like a method call on the variable
+
         TypeInfo objType = resolveType(structSym->typeName);
         objType.structName = structSym->structName;
 
-        // Handle array methods
         if (objType.type == QuarkType::Array)
         {
             if (expr->methodName == "length" || expr->methodName == "slice" ||
@@ -1636,7 +1625,6 @@ TypeInfo SemanticAnalyzer::analyzeStaticCall(StaticCallExpr *expr)
         return retType;
     }
 
-    // It's a true static call on a struct type
     if (!structSym || structSym->kind != Symbol::Kind::Struct)
     {
         error("unknown struct '" + expr->structName + "'", expr->location, "E132", expr->structName.size());
@@ -1709,7 +1697,6 @@ TypeInfo SemanticAnalyzer::analyzeArrayAccess(ArrayAccessExpr *expr)
         return TypeInfo(QuarkType::Unknown, expr->location);
     }
 
-    // For maps, index must be string; for arrays/pointers/lists, index must be int
     TypeInfo indexType = analyzeExpr(expr->index.get());
     if (arrayType.type == QuarkType::Map)
     {
@@ -1738,7 +1725,7 @@ TypeInfo SemanticAnalyzer::analyzeArrayAccess(ArrayAccessExpr *expr)
 
     if (arrayType.type == QuarkType::List)
     {
-        // List elements are dynamically typed - return string as a reasonable default
+
         return TypeInfo(QuarkType::String, expr->location);
     }
 
@@ -1801,12 +1788,11 @@ TypeInfo SemanticAnalyzer::analyzeBinary(BinaryExprAST *expr)
         }
         return TypeInfo(QuarkType::Boolean, expr->location);
 
-    // Bitwise operators - require integer operands and return integer
-    case 'A': // Bitwise AND (&)
-    case 'O': // Bitwise OR (|)
-    case 'X': // Bitwise XOR (^)
-    case 'L': // Shift left (<<)
-    case 'R': // Shift right (>>)
+    case 'A':
+    case 'O':
+    case 'X':
+    case 'L':
+    case 'R':
         if (lhsType.type != QuarkType::Int || rhsType.type != QuarkType::Int)
         {
             error("bitwise operators require integer operands", expr->location, "E145");
@@ -1838,7 +1824,7 @@ TypeInfo SemanticAnalyzer::analyzeUnary(UnaryExprAST *expr)
         }
         return TypeInfo(QuarkType::Boolean, expr->location);
 
-    case '~': // Bitwise NOT
+    case '~':
         if (operandType.type != QuarkType::Int)
         {
             error("bitwise NOT requires integer operand", expr->location, "E146");
@@ -1938,7 +1924,7 @@ TypeInfo SemanticAnalyzer::analyzeArrayLiteral(ArrayLiteralExpr *expr)
 
 TypeInfo SemanticAnalyzer::analyzeMapLiteral(MapLiteralExpr *expr)
 {
-    // Maps can now have any value type - analyze all key-value pairs
+
     for (const auto &pair : expr->pairs)
     {
         TypeInfo keyType = analyzeExpr(pair.first.get());
@@ -1947,7 +1933,6 @@ TypeInfo SemanticAnalyzer::analyzeMapLiteral(MapLiteralExpr *expr)
             error("map keys must be strings", pair.first->location, "E141");
         }
 
-        // Allow any value type in maps
         analyzeExpr(pair.second.get());
     }
 
@@ -1956,8 +1941,7 @@ TypeInfo SemanticAnalyzer::analyzeMapLiteral(MapLiteralExpr *expr)
 
 TypeInfo SemanticAnalyzer::analyzeListLiteral(ListLiteralExpr *expr)
 {
-    // List can contain elements of any type (dynamically typed)
-    // Just analyze all elements to check for errors
+
     for (const auto &elem : expr->elements)
     {
         analyzeExpr(elem.get());
@@ -1974,13 +1958,13 @@ TypeInfo SemanticAnalyzer::analyzeCast(CastExpr *expr)
 
 TypeInfo SemanticAnalyzer::analyzeAddressOf(AddressOfExpr *expr)
 {
-    // Check if the operand is a function name
+
     if (auto *varExpr = dynamic_cast<VariableExprAST *>(expr->operand.get()))
     {
         Symbol *sym = symbolTable_.lookup(varExpr->name);
         if (sym && sym->kind == Symbol::Kind::Function)
         {
-            // This is &functionName - return function pointer type
+
             auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
             fpInfo->returnType = sym->returnType.empty() ? "void" : sym->returnType;
             for (const auto &param : sym->functionParams)
@@ -2060,14 +2044,12 @@ bool SemanticAnalyzer::canImplicitlyConvert(const TypeInfo &from, const TypeInfo
     if (from.type == QuarkType::Boolean && to.type == QuarkType::Int)
         return true;
 
-    // Allow function pointers to be assigned to void*
     if (from.type == QuarkType::FunctionPointer && to.type == QuarkType::Pointer &&
         to.elementType == QuarkType::Void)
     {
         return true;
     }
 
-    // Allow array literals to be assigned to list type
     if (from.type == QuarkType::Array && to.type == QuarkType::List)
     {
         return true;
@@ -2100,17 +2082,16 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
     if (typeName == "void")
         return TypeInfo(QuarkType::Void);
 
-    // Handle function pointer types: fn(args) -> ret
     if (IntegerTypeUtils::isFunctionPointerType(typeName))
     {
         auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
-        // Parse format: fn(int, str) -> int
+
         if (typeName.size() > 2 && typeName.substr(0, 2) == "fn" && typeName[2] == '(')
         {
             size_t parenClose = typeName.find(')');
             if (parenClose != std::string::npos)
             {
-                // Extract parameter types
+
                 std::string paramsStr = typeName.substr(3, parenClose - 3);
                 if (!paramsStr.empty())
                 {
@@ -2118,7 +2099,7 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
                     while ((pos = paramsStr.find(',', lastPos)) != std::string::npos)
                     {
                         std::string param = paramsStr.substr(lastPos, pos - lastPos);
-                        // Trim whitespace
+
                         size_t start = param.find_first_not_of(" \t");
                         size_t end = param.find_last_not_of(" \t");
                         if (start != std::string::npos && end != std::string::npos)
@@ -2127,7 +2108,7 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
                         }
                         lastPos = pos + 1;
                     }
-                    // Last parameter
+
                     std::string param = paramsStr.substr(lastPos);
                     size_t start = param.find_first_not_of(" \t");
                     size_t end = param.find_last_not_of(" \t");
@@ -2137,7 +2118,6 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
                     }
                 }
 
-                // Extract return type (after "->")
                 size_t arrowPos = typeName.find("->", parenClose);
                 if (arrowPos != std::string::npos)
                 {

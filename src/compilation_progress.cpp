@@ -12,7 +12,6 @@ CompilationProgress::CompilationProgress(bool enableAnimation)
       currentStage_(Stage::LEXING), overallProgress_(0.0f)
 {
 
-    // Initialize stage information
     stages_[Stage::LEXING] = {"Lexical Analysis", "✓", false, false, 0.0f};
     stages_[Stage::PARSING] = {"Parsing", "✓", false, false, 0.0f};
     stages_[Stage::CODE_GENERATION] = {"Code Generation", "✓", false, false, 0.0f};
@@ -194,12 +193,10 @@ Element CompilationProgress::createStageList()
 
         Elements stageRow;
 
-        // Icon
         std::string icon = getStageIcon(stage, info.completed);
         Color iconColor = info.completed ? Color::Green : (info.current ? Color::Cyan : Color::GrayDark);
         stageRow.push_back(text(icon + " ") | color(iconColor));
 
-        // Stage name
         Color textColor = info.current ? Color::White : Color::GrayDark;
         stageRow.push_back(text(info.name) | color(textColor));
 
@@ -219,19 +216,16 @@ Element CompilationProgress::createOverallDisplay(bool showProgressBar)
 {
     Elements elements;
 
-    // Title
     elements.push_back(
         hbox({text("› Compiling ") | bold,
               text(filename_) | color(Color::Cyan)}));
 
-    elements.push_back(text("")); // Empty line
+    elements.push_back(text(""));
 
-    // Stage list
     elements.push_back(createStageList());
 
-    elements.push_back(text("")); // Empty line
+    elements.push_back(text(""));
 
-    // Overall progress
     if (showProgressBar)
     {
         elements.push_back(
@@ -239,14 +233,12 @@ Element CompilationProgress::createOverallDisplay(bool showProgressBar)
                   createProgressBar(overallProgress_)}));
     }
 
-    // Elapsed time
     elements.push_back(
         text("Time: " + getElapsedTime()) | color(Color::GrayLight));
 
-    // Error message if present
     if (!errorMessage_.empty())
     {
-        elements.push_back(text("")); // Empty line
+        elements.push_back(text(""));
         elements.push_back(
             text("✗ Error: " + errorMessage_) | color(Color::Red) | bold);
     }
@@ -256,7 +248,7 @@ Element CompilationProgress::createOverallDisplay(bool showProgressBar)
 
 void CompilationProgress::renderLoop()
 {
-    const int frameDelay = 100; // milliseconds
+    const int frameDelay = 100;
     int lastLineCount = 0;
 
     while (running_)
@@ -267,7 +259,6 @@ void CompilationProgress::renderLoop()
             std::cout << "\033[J";
         }
 
-        // Render current state
         auto document = createOverallDisplay(true);
         auto screen = Screen::Create(Dimension::Full(), Dimension::Fit(document));
         Render(screen, document);
@@ -277,10 +268,8 @@ void CompilationProgress::renderLoop()
         screen.Print();
         std::cout << std::flush;
 
-        // Update spinner frame
         spinnerFrame_++;
 
-        // Sleep
         std::this_thread::sleep_for(std::chrono::milliseconds(frameDelay));
     }
 
@@ -296,7 +285,7 @@ void CompilationProgress::renderLoop()
     {
         currentStage_ = Stage::COMPLETE;
         stages_[Stage::COMPLETE].completed = true;
-        showProgressBar = false; // hide bar on successful completion
+        showProgressBar = false;
     }
 
     auto document = createOverallDisplay(showProgressBar);

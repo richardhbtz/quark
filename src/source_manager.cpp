@@ -7,7 +7,6 @@
 
 std::unique_ptr<SourceManager> g_sourceManager;
 
-// SourceFile implementation
 SourceManager::SourceFile::SourceFile(const std::string &name, const std::string &source)
     : filename(name), content(source)
 {
@@ -19,7 +18,7 @@ SourceManager::SourceFile::SourceFile(const std::string &name, const std::string
     while (std::getline(stream, line))
     {
         lines.push_back(line);
-        offset += line.length() + 1; // +1 for newline character
+        offset += line.length() + 1;
         lineOffsets.push_back(offset);
     }
 }
@@ -30,7 +29,7 @@ std::string SourceManager::SourceFile::getLine(int lineNumber) const
     {
         return "";
     }
-    return lines[lineNumber - 1]; // Convert to 0-based indexing
+    return lines[lineNumber - 1];
 }
 
 std::vector<std::string> SourceManager::SourceFile::getLines(int centerLine, int contextLines) const
@@ -67,7 +66,7 @@ int SourceManager::SourceFile::getColumnInLine(size_t absoluteOffset) const
     }
 
     size_t lineStart = lineOffsets[lineNum - 1];
-    return static_cast<int>(absoluteOffset - lineStart) + 1; // 1-based column
+    return static_cast<int>(absoluteOffset - lineStart) + 1;
 }
 
 size_t SourceManager::SourceFile::getAbsoluteOffset(int line, int column) const
@@ -78,7 +77,7 @@ size_t SourceManager::SourceFile::getAbsoluteOffset(int line, int column) const
     }
 
     size_t lineStart = lineOffsets[line - 1];
-    return lineStart + std::max(0, column - 1); // Convert to 0-based column
+    return lineStart + std::max(0, column - 1);
 }
 
 std::string SourceManager::SourceFile::getSnippet(int line, int column, int length) const
@@ -89,7 +88,7 @@ std::string SourceManager::SourceFile::getSnippet(int line, int column, int leng
         return "";
     }
 
-    int startCol = column - 1; // Convert to 0-based
+    int startCol = column - 1;
     int endCol = std::min((int)sourceLine.length(), startCol + length);
 
     if (startCol >= (int)sourceLine.length())
@@ -100,7 +99,6 @@ std::string SourceManager::SourceFile::getSnippet(int line, int column, int leng
     return sourceLine.substr(startCol, endCol - startCol);
 }
 
-// SourceManager implementation
 SourceManager::SourceManager() {}
 
 std::shared_ptr<SourceManager::SourceFile> SourceManager::addFile(const std::string &filename,
@@ -142,7 +140,6 @@ SourceManager::ErrorContext SourceManager::getErrorContext(const std::string &fi
         return context;
     }
 
-    // Get the error line
     context.errorLine = file->getLine(line);
 
     context.contextLines = file->getLines(line, contextLines);
@@ -153,7 +150,6 @@ SourceManager::ErrorContext SourceManager::getErrorContext(const std::string &fi
         context.contextLineNumbers.push_back(startLine + i);
     }
 
-    // Create caret indicator
     context.caretIndicator = createCaretLine(context.errorLine, column, length);
 
     return context;
@@ -173,10 +169,9 @@ std::string SourceManager::extractWord(const std::string &filename, int line, in
         return "";
     }
 
-    int start = column - 1; // Convert to 0-based
+    int start = column - 1;
     int end = start;
 
-    // Find word boundaries
     while (start > 0 && (std::isalnum(sourceLine[start - 1]) || sourceLine[start - 1] == '_'))
     {
         start--;
@@ -223,7 +218,6 @@ std::vector<std::string> SourceManager::findSimilarIdentifiers(const std::string
               [](const auto &a, const auto &b)
               { return a.second < b.second; });
 
-    // Return top suggestions
     std::vector<std::string> suggestions;
     for (size_t i = 0; i < std::min(size_t(3), candidates.size()); ++i)
     {
@@ -241,14 +235,14 @@ std::string SourceManager::highlightRange(const std::string &line, int startCol,
         return line;
     }
 
-    int start = startCol - 1; // Convert to 0-based
+    int start = startCol - 1;
     int end = std::min((int)line.length(), endCol);
 
     std::string before = line.substr(0, start);
     std::string highlighted = line.substr(start, end - start);
     std::string after = line.substr(end);
 
-    return before + highlightColor + highlighted + "\033[0m" + after; // Reset color after highlight
+    return before + highlightColor + highlighted + "\033[0m" + after;
 }
 
 std::string SourceManager::createCaretLine(const std::string &sourceLine, int column, int length) const
@@ -299,7 +293,7 @@ void SourceManager::splitIntoLines(const std::string &content, std::vector<std::
     while (std::getline(stream, line))
     {
         lines.push_back(line);
-        offset += line.length() + 1; // +1 for newline character
+        offset += line.length() + 1;
         lineOffsets.push_back(offset);
     }
 }
@@ -313,7 +307,6 @@ int SourceManager::calculateLevenshteinDistance(const std::string &a, const std:
 
     std::vector<std::vector<int>> dp(a.length() + 1, std::vector<int>(b.length() + 1));
 
-    // Initialize base cases
     for (size_t i = 0; i <= a.length(); ++i)
     {
         dp[i][0] = static_cast<int>(i);
@@ -323,7 +316,6 @@ int SourceManager::calculateLevenshteinDistance(const std::string &a, const std:
         dp[0][j] = static_cast<int>(j);
     }
 
-    // Fill the DP table
     for (size_t i = 1; i <= a.length(); ++i)
     {
         for (size_t j = 1; j <= b.length(); ++j)
@@ -349,7 +341,7 @@ std::vector<std::string> SourceManager::extractIdentifiers(const std::string &co
     std::sregex_iterator iter(content.begin(), content.end(), identifierRegex);
     std::sregex_iterator end;
 
-    std::set<std::string> uniqueIdentifiers; // Use set to avoid duplicates
+    std::set<std::string> uniqueIdentifiers;
 
     while (iter != end)
     {
@@ -365,7 +357,6 @@ std::vector<std::string> SourceManager::extractIdentifiers(const std::string &co
         ++iter;
     }
 
-    // Convert set to vector
     identifiers.assign(uniqueIdentifiers.begin(), uniqueIdentifiers.end());
     return identifiers;
 }

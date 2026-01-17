@@ -32,7 +32,7 @@ namespace
         int lastWarningCount = 0;
     };
 
-} // namespace
+}
 
 struct QuarkCompilerHandle
 {
@@ -206,21 +206,18 @@ namespace
         g_errorReporter = std::make_unique<ErrorReporter>(g_cli);
         g_sourceManager->addFile(logicalName, source);
 
-        // Initialize module resolver
         std::filesystem::path compilerPath;
         std::filesystem::path projectPath;
 
-        // Get compiler path from library paths (first one is usually compiler dir)
         if (!additionalLibraryPaths.empty())
         {
             compilerPath = additionalLibraryPaths[0];
         }
 
-        // Get project path by searching for Quark.toml
         std::filesystem::path inputPath(logicalName);
         std::error_code ec;
         std::filesystem::path searchPath;
-        
+
         if (inputPath.has_parent_path())
         {
             searchPath = std::filesystem::absolute(inputPath.parent_path(), ec);
@@ -230,11 +227,10 @@ namespace
             searchPath = std::filesystem::current_path(ec);
         }
 
-        // Search upwards for Quark.toml to find project root
         projectPath = searchPath;
         std::filesystem::path current = searchPath;
         bool foundProjectRoot = false;
-        
+
         while (current.has_parent_path() && current != current.parent_path())
         {
             std::filesystem::path manifestPath = current / "Quark.toml";
@@ -246,8 +242,7 @@ namespace
             }
             current = current.parent_path();
         }
-        
-        // If no Quark.toml found, use current working directory
+
         if (!foundProjectRoot)
         {
             projectPath = std::filesystem::current_path(ec);
@@ -504,7 +499,7 @@ namespace
         }
     }
 
-} // namespace
+}
 
 QuarkCompilerHandle *quark_compiler_create(void)
 {

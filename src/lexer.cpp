@@ -5,7 +5,6 @@ Lexer::Lexer(const std::string &src, bool verbose, const std::string &filename) 
 {
     currentLocation_.filename = filename;
 
-    // Skip UTF-8 BOM if present
     if (src_.size() >= 3 &&
         static_cast<unsigned char>(src_[0]) == 0xEF &&
         static_cast<unsigned char>(src_[1]) == 0xBB &&
@@ -17,7 +16,7 @@ Lexer::Lexer(const std::string &src, bool verbose, const std::string &filename) 
     cur_ = next();
     if (verbose_)
     {
-        // print first token
+
         auto t = cur_;
         printf("[lexer]first token kind=%d text='%s' number=%g at %d:%d\n", (int)t.kind, t.text.c_str(), t.numberValue, t.location.line, t.location.column);
     }
@@ -28,7 +27,7 @@ void Lexer::skipWhitespace()
     while (idx_ < src_.size())
     {
         char c = src_[idx_];
-        // skip regular whitespace
+
         if (isspace((unsigned char)c))
         {
             advancePosition(c);
@@ -38,12 +37,12 @@ void Lexer::skipWhitespace()
 
         if (c == '/' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '/')
         {
-            // consume '//'
+
             advancePosition(src_[idx_]);
             ++idx_;
             advancePosition(src_[idx_]);
             ++idx_;
-            // skip until newline or EOF
+
             while (idx_ < src_.size() && src_[idx_] != '\n')
             {
                 advancePosition(src_[idx_]);
@@ -59,18 +58,18 @@ void Lexer::skipWhitespace()
 
         if (c == '/' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '*')
         {
-            // consume '/*'
+
             advancePosition(src_[idx_]);
             ++idx_;
             advancePosition(src_[idx_]);
             ++idx_;
-            // scan until '*/' or EOF
+
             while (idx_ + 1 < src_.size())
             {
                 char cc = src_[idx_];
                 if (cc == '*' && src_[idx_ + 1] == '/')
                 {
-                    // consume '*/'
+
                     advancePosition(src_[idx_]);
                     ++idx_;
                     advancePosition(src_[idx_]);
@@ -127,7 +126,6 @@ Token Lexer::next()
         tok.text = s;
         tok.numberValue = 0.0;
 
-        // recognize keywords
         if (s == "import")
         {
             tok.kind = tok_include;
@@ -227,10 +225,10 @@ Token Lexer::next()
     {
         size_t start = idx_;
         bool seenDot = false;
-        // Hexadecimal: 0x... or 0X...
+
         if (src_[idx_] == '0' && idx_ + 1 < src_.size() && (src_[idx_ + 1] == 'x' || src_[idx_ + 1] == 'X'))
         {
-            // consume '0x'
+
             advancePosition(src_[idx_]);
             ++idx_;
             advancePosition(src_[idx_]);
@@ -301,7 +299,6 @@ Token Lexer::next()
         std::string lexeme = src_.substr(start, idx_ - start);
         double v = std::stod(lexeme);
 
-        // Check for 'f' or 'F' suffix to indicate float literal
         bool isFloatLiteral = false;
         if (idx_ < src_.size() && (src_[idx_] == 'f' || src_[idx_] == 'F'))
         {
@@ -327,7 +324,7 @@ Token Lexer::next()
             char ch = src_[idx_];
             if (ch == '\\' && idx_ + 1 < src_.size())
             {
-                // Handle escape sequences
+
                 advancePosition(ch);
                 ++idx_;
                 ch = src_[idx_];
@@ -391,7 +388,6 @@ Token Lexer::next()
         return tok;
     }
 
-    // Character literal: 'x' or '\n', etc.
     if (c == '\'')
     {
         advancePosition(c);
@@ -402,7 +398,7 @@ Token Lexer::next()
             char ch = src_[idx_];
             if (ch == '\\' && idx_ + 1 < src_.size())
             {
-                // Handle escape sequences
+
                 advancePosition(ch);
                 ++idx_;
                 ch = src_[idx_];
@@ -453,7 +449,7 @@ Token Lexer::next()
             advancePosition(src_[idx_]);
             ++idx_;
         }
-        // Expect closing quote
+
         if (idx_ < src_.size() && src_[idx_] == '\'')
         {
             advancePosition(src_[idx_]);
@@ -481,16 +477,16 @@ Token Lexer::next()
     if (c == '&' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '&')
     {
         advancePosition(c);
-        ++idx_; // consume first '&'
+        ++idx_;
         advancePosition(src_[idx_]);
-        ++idx_; // consume second '&'
+        ++idx_;
         Token tok{tok_and, 0.0, "&&"};
         tok.location = tokenStart;
         if (verbose_)
             printf("[lexer] && at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle &= (bitwise AND assignment)
+
     if (c == '&' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=')
     {
         advancePosition(c);
@@ -503,7 +499,7 @@ Token Lexer::next()
             printf("[lexer] &= at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle single & (bitwise AND)
+
     if (c == '&')
     {
         advancePosition(c);
@@ -517,16 +513,16 @@ Token Lexer::next()
     if (c == '|' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '|')
     {
         advancePosition(c);
-        ++idx_; // consume first '|'
+        ++idx_;
         advancePosition(src_[idx_]);
-        ++idx_; // consume second '|'
+        ++idx_;
         Token tok{tok_or, 0.0, "||"};
         tok.location = tokenStart;
         if (verbose_)
             printf("[lexer] || at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle |= (bitwise OR assignment)
+
     if (c == '|' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=')
     {
         advancePosition(c);
@@ -539,7 +535,7 @@ Token Lexer::next()
             printf("[lexer] |= at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle single | (bitwise OR)
+
     if (c == '|')
     {
         advancePosition(c);
@@ -550,7 +546,7 @@ Token Lexer::next()
             printf("[lexer] | at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle ^= (bitwise XOR assignment)
+
     if (c == '^' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '=')
     {
         advancePosition(c);
@@ -563,7 +559,7 @@ Token Lexer::next()
             printf("[lexer] ^= at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle ^ (bitwise XOR)
+
     if (c == '^')
     {
         advancePosition(c);
@@ -574,7 +570,7 @@ Token Lexer::next()
             printf("[lexer] ^ at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle ~ (bitwise NOT)
+
     if (c == '~')
     {
         advancePosition(c);
@@ -645,7 +641,7 @@ Token Lexer::next()
             printf("[lexer] -= at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle <<= (shift left assignment)
+
     if (c == '<' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '<')
     {
         if (idx_ + 2 < src_.size() && src_[idx_ + 2] == '=')
@@ -662,7 +658,7 @@ Token Lexer::next()
                 printf("[lexer] <<= at %d:%d\n", tokenStart.line, tokenStart.column);
             return tok;
         }
-        // Handle << (shift left)
+
         advancePosition(c);
         ++idx_;
         advancePosition(src_[idx_]);
@@ -673,7 +669,7 @@ Token Lexer::next()
             printf("[lexer] << at %d:%d\n", tokenStart.line, tokenStart.column);
         return tok;
     }
-    // Handle >>= (shift right assignment)
+
     if (c == '>' && idx_ + 1 < src_.size() && src_[idx_ + 1] == '>')
     {
         if (idx_ + 2 < src_.size() && src_[idx_ + 2] == '=')
@@ -690,7 +686,7 @@ Token Lexer::next()
                 printf("[lexer] >>= at %d:%d\n", tokenStart.line, tokenStart.column);
             return tok;
         }
-        // Handle >> (shift right)
+
         advancePosition(c);
         ++idx_;
         advancePosition(src_[idx_]);

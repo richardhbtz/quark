@@ -102,19 +102,16 @@ void ExpressionCodeGen::clearStructFields()
     struct_fields_.clear();
 }
 
-// Type checking implementation
 TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
 {
     if (!expr)
         return TypeInfo(QuarkType::Unknown, {});
 
-    // Handle struct literals
     if (auto *structLiteral = dynamic_cast<StructLiteralExpr *>(expr))
     {
         return TypeInfo(QuarkType::Struct, expr->location, structLiteral->structName);
     }
 
-    // Handle member access
     if (auto *memberAccess = dynamic_cast<MemberAccessExpr *>(expr))
     {
         if (auto *varExpr = dynamic_cast<VariableExprAST *>(memberAccess->object.get()))
@@ -134,7 +131,7 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 auto git = g_named_types_->find(varExpr->name);
                 if (git != g_named_types_->end() && g_struct_types_)
                 {
-                    // Map LLVM type to struct name
+
                     for (const auto &p : *g_struct_types_)
                     {
                         if (p.second == git->second)
@@ -160,7 +157,6 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 throw CodeGenError("undefined variable '" + varExpr->name + "'", expr->location);
             }
 
-            // Find the struct definition
             auto defIt = g_struct_defs_->find(objectStructName);
             if (defIt == g_struct_defs_->end())
             {
@@ -194,7 +190,6 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                     collectInheritedFields(currentStruct->parentName);
                 }
 
-                // Add this struct's fields
                 for (const auto &field : currentStruct->fields)
                 {
                     allFields.push_back(field);
@@ -268,7 +263,7 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         }
         else if (auto *nestedAccess = dynamic_cast<MemberAccessExpr *>(memberAccess->object.get()))
         {
-            // Handle nested member access (e.g., msg.author.id)
+
             TypeInfo nestedType = inferType(nestedAccess);
             if (nestedType.type != QuarkType::Struct)
             {
@@ -277,14 +272,12 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
 
             std::string objectStructName = nestedType.structName;
 
-            // Find the struct definition
             auto defIt = g_struct_defs_->find(objectStructName);
             if (defIt == g_struct_defs_->end())
             {
                 throw CodeGenError("struct definition not found: " + objectStructName, expr->location);
             }
 
-            // Collect all fields including inherited ones
             std::vector<std::pair<std::string, std::string>> allFields;
             std::function<void(const std::string &)> collectInheritedFields = [&](const std::string &currentStructName)
             {
@@ -379,7 +372,7 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         double value = n->value;
         if (value == std::floor(value) && value >= INT32_MIN && value <= INT32_MAX)
         {
-            // This is an integer value
+
             return TypeInfo(QuarkType::Int, expr->location);
         }
         else
@@ -388,31 +381,29 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         }
     }
 
-    // Handle float literals (e.g., 1.0f)
     if (auto *f = dynamic_cast<FloatLiteralExpr *>(expr))
     {
         return TypeInfo(QuarkType::Float, expr->location);
     }
 
-    // Handle unary expressions (negation, etc.) - return type of operand
     if (auto *u = dynamic_cast<UnaryExprAST *>(expr))
     {
         if (u->op == '-' || u->op == '+')
         {
-            // Negation/plus preserves the type of the operand
+
             return inferType(u->operand.get());
         }
         else if (u->op == '!')
         {
-            // Logical not returns bool
+
             return TypeInfo(QuarkType::Boolean, expr->location);
         }
         else if (u->op == '~')
         {
-            // Bitwise not returns int
+
             return TypeInfo(QuarkType::Int, expr->location);
         }
-        // For other unary ops, return the operand type
+
         return inferType(u->operand.get());
     }
 
@@ -425,16 +416,14 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
     if (auto *b = dynamic_cast<BoolExprAST *>(expr))
         return TypeInfo(QuarkType::Boolean, expr->location);
 
-    // Handle null literal
     if (dynamic_cast<NullExprAST *>(expr))
         return TypeInfo(QuarkType::Null, expr->location);
 
-    // Handle FunctionRefExpr - returns a function pointer type
     if (auto *funcRef = dynamic_cast<FunctionRefExpr *>(expr))
     {
         if (g_function_map_ && g_function_map_->find(funcRef->functionName) != g_function_map_->end())
         {
-            // Build function pointer type info from function signature
+
             auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
             if (functionTypes_.find(funcRef->functionName) != functionTypes_.end())
             {
@@ -443,15 +432,15 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             }
             else
             {
-                fpInfo->returnType = "void"; // fallback
+                fpInfo->returnType = "void";
             }
-            // Get param types from g_function_param_types_
+
             if (g_function_param_types_ && g_function_param_types_->find(funcRef->functionName) != g_function_param_types_->end())
             {
                 auto &paramTypes = (*g_function_param_types_)[funcRef->functionName];
                 for (auto paramTy : paramTypes)
                 {
-                    // Convert LLVM type to string
+
                     if (paramTy == int32_t_)
                         fpInfo->paramTypes.push_back("int");
                     else if (paramTy == float_t_)
@@ -463,7 +452,7 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                     else if (paramTy == int8ptr_t_)
                         fpInfo->paramTypes.push_back("str");
                     else
-                        fpInfo->paramTypes.push_back("int"); // default
+                        fpInfo->paramTypes.push_back("int");
                 }
             }
             return TypeInfo(QuarkType::FunctionPointer, expr->location, "", QuarkType::Unknown, 0, fpInfo->toString(), fpInfo);
@@ -473,12 +462,12 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
 
     if (auto *addrOf = dynamic_cast<AddressOfExpr *>(expr))
     {
-        // Check if operand is a function name - then return function pointer type
+
         if (auto *var = dynamic_cast<VariableExprAST *>(addrOf->operand.get()))
         {
             if (g_function_map_ && g_function_map_->find(var->name) != g_function_map_->end())
             {
-                // This is &functionName - return function pointer type
+
                 auto fpInfo = std::make_shared<FunctionPointerTypeInfo>();
                 if (functionTypes_.find(var->name) != functionTypes_.end())
                 {
@@ -665,30 +654,27 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         return TypeInfo(QuarkType::Array, expr->location, "", elementType.type, arrayLiteral->elements.size());
     }
 
-    // Map literal
     if (auto *mapLiteral = dynamic_cast<MapLiteralExpr *>(expr))
     {
         return TypeInfo(QuarkType::Map, expr->location);
     }
 
-    // Array/Map access expression: arr[index] or map[key]
     if (auto *arrayAccess = dynamic_cast<ArrayAccessExpr *>(expr))
     {
         TypeInfo arrayType = inferType(arrayAccess->array.get());
         if (arrayType.type == QuarkType::Array)
         {
-            // Return the element type
+
             return TypeInfo(arrayType.elementType, expr->location);
         }
         else if (arrayType.type == QuarkType::Map)
         {
-            // Map access always returns string
+
             return TypeInfo(QuarkType::String, expr->location);
         }
         else if (arrayType.type == QuarkType::List)
         {
-            // List is untyped - elements are stored as i8*, return Int as default
-            // The caller must cast as needed
+
             return TypeInfo(QuarkType::Int, expr->location);
         }
         else if (arrayType.type == QuarkType::String)
@@ -736,7 +722,6 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
         if (it != variableTypes_.end())
             return it->second;
 
-        // Check global variables
         if (g_named_types_)
         {
             auto git = g_named_types_->find(v->name);
@@ -753,12 +738,12 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 {
                     for (const auto &structPair : *g_struct_types_)
                     {
-                        // Direct struct value
+
                         if (structPair.second == git->second)
                         {
                             return TypeInfo(QuarkType::Struct, expr->location, structPair.first);
                         }
-                        // Pointer to struct
+
                         if (LLVMPointerType(structPair.second, 0) == git->second)
                         {
                             return TypeInfo(QuarkType::Struct, expr->location, structPair.first);
@@ -798,7 +783,7 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                     return TypeInfo(QuarkType::Double, expr->location);
                 if (lhsType.type == QuarkType::Float || rhsType.type == QuarkType::Float)
                     return TypeInfo(QuarkType::Float, expr->location);
-                // both integers
+
                 return TypeInfo(QuarkType::Int, expr->location);
             }
             break;
@@ -818,28 +803,27 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             checkTypeCompatibility(QuarkType::Int, rhsType.type, rhsType.location, "arithmetic operation");
             return TypeInfo(QuarkType::Int, expr->location);
         case '=':
-        case 'n': // !=
+        case 'n':
         case '<':
         case '>':
-        case 'l': // <=
-        case 'g': // >=
+        case 'l':
+        case 'g':
             return TypeInfo(QuarkType::Boolean, expr->location);
-        case '&': // &&
-        case '|': // ||
+        case '&':
+        case '|':
             checkTypeCompatibility(QuarkType::Boolean, lhsType.type, lhsType.location, "logical operation");
             checkTypeCompatibility(QuarkType::Boolean, rhsType.type, rhsType.location, "logical operation");
             return TypeInfo(QuarkType::Boolean, expr->location);
-        // Bitwise operators - return integer type
-        case 'A': // Bitwise AND (&)
-        case 'O': // Bitwise OR (|)
-        case 'X': // Bitwise XOR (^)
-        case 'L': // Shift left (<<)
-        case 'R': // Shift right (>>)
+
+        case 'A':
+        case 'O':
+        case 'X':
+        case 'L':
+        case 'R':
             return TypeInfo(QuarkType::Int, expr->location);
         }
     }
 
-    // Handle method calls
     if (auto *methodCall = dynamic_cast<MethodCallExpr *>(expr))
     {
         TypeInfo objType = inferType(methodCall->object.get());
@@ -891,7 +875,6 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
             throw CodeGenError("Unknown map method: " + methodCall->methodName, expr->location);
         }
 
-        // Special case for str.split() which returns str[]
         if (methodCall->methodName == "split")
         {
             return TypeInfo(QuarkType::Array, expr->location, "", QuarkType::String);
@@ -964,7 +947,7 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 std::string mangled = targetStruct + "::" + methodCall->methodName;
 
                 auto findIt = functionTypes_.find(mangled);
-                // Walk parent chain if needed
+
                 while (findIt == functionTypes_.end())
                 {
                     if (!g_struct_defs_)
@@ -1043,13 +1026,12 @@ TypeInfo ExpressionCodeGen::inferType(ExprAST *expr)
                 {
                     return TypeInfo(QuarkType::Void, expr->location);
                 }
-                // str_split returns str[]
+
                 if (call->callee == "str_split")
                 {
                     return TypeInfo(QuarkType::Array, expr->location, "", QuarkType::String, 0);
                 }
 
-                // Memory allocation functions return void* (Pointer type)
                 if (call->callee == "alloc" || call->callee == "realloc" ||
                     call->callee == "memset" || call->callee == "memcpy")
                 {
@@ -1231,7 +1213,6 @@ void ExpressionCodeGen::checkTypeCompatibility(QuarkType expected, QuarkType act
     if (IntegerTypeUtils::isNumericType(expected) && IntegerTypeUtils::isNumericType(actual))
         return;
 
-    // Direct match
     if (expected == actual)
         return;
 
@@ -1371,32 +1352,32 @@ std::optional<double> ExpressionCodeGen::evalConst(ExprAST *expr)
         case '%':
             return r != 0.0 ? std::fmod(l, r) : std::nan("");
         case '=':
-            return (l == r) ? 1.0 : 0.0; // ==
+            return (l == r) ? 1.0 : 0.0;
         case 'n':
-            return (l != r) ? 1.0 : 0.0; // !=
+            return (l != r) ? 1.0 : 0.0;
         case '<':
-            return (l < r) ? 1.0 : 0.0; // <
+            return (l < r) ? 1.0 : 0.0;
         case '>':
-            return (l > r) ? 1.0 : 0.0; // >
+            return (l > r) ? 1.0 : 0.0;
         case 'l':
-            return (l <= r) ? 1.0 : 0.0; // <=
+            return (l <= r) ? 1.0 : 0.0;
         case 'g':
-            return (l >= r) ? 1.0 : 0.0; // >=
+            return (l >= r) ? 1.0 : 0.0;
         case '&':
-            return ((l != 0.0) && (r != 0.0)) ? 1.0 : 0.0; // &&
+            return ((l != 0.0) && (r != 0.0)) ? 1.0 : 0.0;
         case '|':
-            return ((l != 0.0) || (r != 0.0)) ? 1.0 : 0.0; // ||
-        // Bitwise operators (constant evaluation)
+            return ((l != 0.0) || (r != 0.0)) ? 1.0 : 0.0;
+
         case 'A':
-            return static_cast<double>(static_cast<int>(l) & static_cast<int>(r)); // Bitwise AND
+            return static_cast<double>(static_cast<int>(l) & static_cast<int>(r));
         case 'O':
-            return static_cast<double>(static_cast<int>(l) | static_cast<int>(r)); // Bitwise OR
+            return static_cast<double>(static_cast<int>(l) | static_cast<int>(r));
         case 'X':
-            return static_cast<double>(static_cast<int>(l) ^ static_cast<int>(r)); // Bitwise XOR
+            return static_cast<double>(static_cast<int>(l) ^ static_cast<int>(r));
         case 'L':
-            return static_cast<double>(static_cast<int>(l) << static_cast<int>(r)); // Shift left
+            return static_cast<double>(static_cast<int>(l) << static_cast<int>(r));
         case 'R':
-            return static_cast<double>(static_cast<int>(l) >> static_cast<int>(r)); // Shift right
+            return static_cast<double>(static_cast<int>(l) >> static_cast<int>(r));
         default:
             return std::nullopt;
         }
@@ -1437,7 +1418,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 {
     if (auto *cast = dynamic_cast<CastExpr *>(expr))
     {
-        // Generate operand first
+
         LLVMValueRef val = genExpr(cast->operand.get());
         TypeInfo srcT;
         try
@@ -1607,7 +1588,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         {
             if (IntegerTypeUtils::isIntegerType(srcT.type))
             {
-                // Normalize to i32
+
                 if (LLVMTypeOf(val) != int32_t_)
                 {
                     return LLVMBuildZExt(builder_, val, int32_t_, "int_norm_i32");
@@ -1616,7 +1597,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             }
             else if (srcT.type == QuarkType::Char)
             {
-                // Char (i8) to int (i32) - zero extend
+
                 return LLVMBuildZExt(builder_, val, int32_t_, "char_to_int");
             }
             else if (srcT.type == QuarkType::Float)
@@ -1629,7 +1610,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             }
             else if (srcT.type == QuarkType::Boolean)
             {
-                // zero-extend i1 to i32
+
                 if (LLVMTypeOf(val) == bool_t_)
                     return LLVMBuildZExt(builder_, val, int32_t_, "bool_to_int");
                 LLVMValueRef zero = LLVMConstInt(LLVMTypeOf(val), 0, 0);
@@ -1657,7 +1638,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 return LLVMBuildFPTrunc(builder_, val, float_t_, "double_to_float");
             if (IntegerTypeUtils::isIntegerType(srcT.type))
             {
-                // Ensure i32 width
+
                 LLVMValueRef i32v = (LLVMTypeOf(val) == int32_t_) ? val : LLVMBuildZExt(builder_, val, int32_t_, "to_i32");
                 return LLVMBuildSIToFP(builder_, i32v, float_t_, "int_to_float");
             }
@@ -1731,13 +1712,11 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         throw CodeGenError("unsupported cast target type '" + cast->targetTypeName + "'", expr->location);
     }
 
-    // Handle struct literals
     if (auto *structLiteral = dynamic_cast<StructLiteralExpr *>(expr))
     {
         return genStructLiteral(structLiteral);
     }
 
-    // Handle member access
     if (auto *memberAccess = dynamic_cast<MemberAccessExpr *>(expr))
     {
         return genMemberAccess(memberAccess);
@@ -1748,7 +1727,6 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         return genMethodCall(methodCall);
     }
 
-    // Handle static method calls
     if (auto *staticCall = dynamic_cast<StaticCallExpr *>(expr))
     {
         return genStaticCall(staticCall);
@@ -1759,7 +1737,6 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         return genAddressOf(addrOf);
     }
 
-    // Handle FunctionRefExpr - returns function pointer value
     if (auto *funcRef = dynamic_cast<FunctionRefExpr *>(expr))
     {
         if (g_function_map_)
@@ -1775,7 +1752,6 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         throw std::runtime_error("Unknown function '" + funcRef->functionName + "' in function reference");
     }
 
-    // Handle IndirectCallExpr - call through function pointer
     if (auto *indirectCall = dynamic_cast<IndirectCallExpr *>(expr))
     {
         return genIndirectCall(indirectCall);
@@ -1814,7 +1790,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
     {
         return LLVMConstInt(bool_t_, b->value ? 1 : 0, 0);
     }
-    // Handle null literal - return null pointer (void*)
+
     if (dynamic_cast<NullExprAST *>(expr))
     {
         return LLVMConstPointerNull(int8ptr_t_);
@@ -1826,7 +1802,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
     }
     if (auto *c = dynamic_cast<CharExprAST *>(expr))
     {
-        // Char is represented as i8
+
         return LLVMConstInt(LLVMInt8TypeInContext(ctx_), static_cast<unsigned char>(c->value), 0);
     }
     if (auto *n = dynamic_cast<NumberExprAST *>(expr))
@@ -1834,7 +1810,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         double value = n->value;
         if (value == std::floor(value) && value >= INT32_MIN && value <= INT32_MAX)
         {
-            // This is an integer value
+
             return LLVMConstInt(int32_t_, static_cast<long long>(value), 0);
         }
         else
@@ -1842,7 +1818,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             return LLVMConstReal(double_t_, value);
         }
     }
-    // Handle float literal (e.g., 1.0f)
+
     if (auto *f = dynamic_cast<FloatLiteralExpr *>(expr))
     {
         return LLVMConstReal(float_t_, f->value);
@@ -1855,24 +1831,24 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         {
             if (auto *numExpr = dynamic_cast<NumberExprAST *>(u->operand.get()))
             {
-                // Direct number negation
+
                 double value = numExpr->value;
                 if (value == std::floor(value) && value >= INT32_MIN && value <= INT32_MAX)
                 {
-                    // Integer negation
+
                     LLVMValueRef intVal = LLVMConstInt(int32_t_, (int32_t)value, 0);
                     return LLVMBuildNeg(builder_, intVal, "neg");
                 }
                 else
                 {
-                    // Floating-point negation
+
                     LLVMValueRef floatVal = LLVMConstReal(double_t_, value);
                     return LLVMBuildFNeg(builder_, floatVal, "fneg");
                 }
             }
             else if (auto *floatExpr = dynamic_cast<FloatLiteralExpr *>(u->operand.get()))
             {
-                // Direct float literal negation
+
                 LLVMValueRef floatVal = LLVMConstReal(float_t_, floatExpr->value);
                 return LLVMBuildFNeg(builder_, floatVal, "fneg");
             }
@@ -1890,7 +1866,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
                 if (IntegerTypeUtils::isFloatingType(operandType.type))
                 {
-                    // Floating-point negation
+
                     LLVMValueRef floatVal = genExpr(u->operand.get());
                     return LLVMBuildFNeg(builder_, floatVal, "fneg");
                 }
@@ -1906,7 +1882,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             LLVMValueRef boolVal = genExprBool(u->operand.get());
             return LLVMBuildNot(builder_, boolVal, "not");
         }
-        else if (u->op == '~') // Bitwise NOT
+        else if (u->op == '~')
         {
             LLVMValueRef intVal = genExprInt(u->operand.get());
             return LLVMBuildNot(builder_, intVal, "bitnot");
@@ -1920,7 +1896,6 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             return genExprBool(expr);
         }
 
-        // Handle bitwise operators - they work on integers and return integers
         if (b->op == 'A' || b->op == 'O' || b->op == 'X' || b->op == 'L' || b->op == 'R')
         {
             LLVMValueRef lhs = genExprInt(b->lhs.get());
@@ -1928,15 +1903,15 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             switch (b->op)
             {
             case 'A':
-                return LLVMBuildAnd(builder_, lhs, rhs, "bitand"); // Bitwise AND
+                return LLVMBuildAnd(builder_, lhs, rhs, "bitand");
             case 'O':
-                return LLVMBuildOr(builder_, lhs, rhs, "bitor"); // Bitwise OR
+                return LLVMBuildOr(builder_, lhs, rhs, "bitor");
             case 'X':
-                return LLVMBuildXor(builder_, lhs, rhs, "bitxor"); // Bitwise XOR
+                return LLVMBuildXor(builder_, lhs, rhs, "bitxor");
             case 'L':
-                return LLVMBuildShl(builder_, lhs, rhs, "shl"); // Shift left
+                return LLVMBuildShl(builder_, lhs, rhs, "shl");
             case 'R':
-                return LLVMBuildAShr(builder_, lhs, rhs, "shr"); // Arithmetic shift right
+                return LLVMBuildAShr(builder_, lhs, rhs, "shr");
             default:
                 throw std::runtime_error("unexpected bitwise operator");
             }
@@ -1962,7 +1937,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
                             if (isDirectParam)
                             {
-                                lhs = it->second; // Use parameter directly
+                                lhs = it->second;
                             }
                             else
                             {
@@ -1988,7 +1963,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
                             if (isDirectParam)
                             {
-                                rhs = it->second; // Use parameter directly
+                                rhs = it->second;
                             }
                             else
                             {
@@ -1999,7 +1974,6 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 }
             }
 
-            // Declare strcmp function
             static LLVMValueRef strcmpFn = nullptr;
             if (!strcmpFn)
             {
@@ -2018,9 +1992,9 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             LLVMValueRef result = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(strcmpFn), strcmpFn, args, 2, "strcmptmp");
             LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
 
-            if (b->op == '=') // equals
+            if (b->op == '=')
                 return LLVMBuildICmp(builder_, LLVMIntEQ, result, zero, "eqtmp");
-            else // not equals
+            else
                 return LLVMBuildICmp(builder_, LLVMIntNE, result, zero, "netmp");
         }
 
@@ -2042,13 +2016,13 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             {
                 if (IntegerTypeUtils::isFloatingType(lhsType.type) || IntegerTypeUtils::isFloatingType(rhsType.type))
                 {
-                    // Float addition
+
                     LLVMValueRef lhs = genExpr(b->lhs.get());
                     LLVMValueRef rhs = genExpr(b->rhs.get());
 
                     if (lhsType.type == QuarkType::Float || rhsType.type == QuarkType::Float)
                     {
-                        // Convert both to float
+
                         if (lhsType.type == QuarkType::Int)
                         {
                             lhs = LLVMBuildSIToFP(builder_, lhs, float_t_, "lhs_to_float");
@@ -2069,7 +2043,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                     }
                     else
                     {
-                        // Convert both to double
+
                         if (lhsType.type == QuarkType::Int)
                         {
                             lhs = LLVMBuildSIToFP(builder_, lhs, double_t_, "lhs_to_double");
@@ -2091,7 +2065,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 }
                 else
                 {
-                    // Integer addition
+
                     LLVMValueRef lhs = genExprInt(b->lhs.get());
                     LLVMValueRef rhs = genExprInt(b->rhs.get());
                     return LLVMBuildAdd(builder_, lhs, rhs, "addtmp");
@@ -2140,7 +2114,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
         if (IntegerTypeUtils::isFloatingType(lhsType.type) || IntegerTypeUtils::isFloatingType(rhsType.type))
         {
-            // Floating-point arithmetic
+
             LLVMValueRef lhs = genExpr(b->lhs.get());
             LLVMValueRef rhs = genExpr(b->rhs.get());
 
@@ -2148,7 +2122,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             if (lhsType.type == QuarkType::Double || rhsType.type == QuarkType::Double)
             {
                 targetType = double_t_;
-                // Convert operands to double
+
                 if (lhsType.type == QuarkType::Int)
                 {
                     lhs = LLVMBuildSIToFP(builder_, lhs, double_t_, "lhs_to_double");
@@ -2169,7 +2143,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             else
             {
                 targetType = float_t_;
-                // Convert operands to float
+
                 if (lhsType.type == QuarkType::Int)
                 {
                     lhs = LLVMBuildSIToFP(builder_, lhs, float_t_, "lhs_to_float");
@@ -2193,7 +2167,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 LLVMValueRef fmodFn;
                 if (targetType == float_t_)
                 {
-                    // Use fmodf for float
+
                     fmodFn = LLVMGetNamedFunction(module_, "fmodf");
                     if (!fmodFn)
                     {
@@ -2204,7 +2178,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 }
                 else
                 {
-                    // Use fmod for double
+
                     fmodFn = LLVMGetNamedFunction(module_, "fmod");
                     if (!fmodFn)
                     {
@@ -2222,7 +2196,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
         }
         else
         {
-            // Integer arithmetic
+
             LLVMValueRef lhs = genExprInt(b->lhs.get());
             LLVMValueRef rhs = genExprInt(b->rhs.get());
             switch (b->op)
@@ -2253,7 +2227,6 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                 printf("[expression_codegen] resolving field '%s' to this.%s\n", v->name.c_str(), v->name.c_str());
             }
 
-            // Get the "this" parameter
             auto thisIt = g_named_values_->find("this");
             if (thisIt == g_named_values_->end())
             {
@@ -2313,7 +2286,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             }
             else
             {
-                // Handle struct types
+
                 auto fieldStructTypeIt = g_struct_types_->find(fieldType);
                 if (fieldStructTypeIt != g_struct_types_->end())
                 {
@@ -2333,7 +2306,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
                 if (isDirectParam)
                 {
-                    return it->second; // Use parameter directly
+                    return it->second;
                 }
                 else if (g_named_types_)
                 {
@@ -2347,7 +2320,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                         else if (LLVMGetTypeKind(typeIt->second) == LLVMArrayTypeKind &&
                                  LLVMGetElementType(typeIt->second) == LLVMInt8TypeInContext(ctx_))
                         {
-                            // Global string array - GEP to get pointer to first element (char*)
+
                             LLVMValueRef indices[] = {
                                 LLVMConstInt(LLVMInt64TypeInContext(ctx_), 0, false),
                                 LLVMConstInt(LLVMInt64TypeInContext(ctx_), 0, false)};
@@ -2359,7 +2332,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                         }
                         else if (typeIt->second == LLVMInt8TypeInContext(ctx_))
                         {
-                            // Char type (i8)
+
                             return LLVMBuildLoad2(builder_, LLVMInt8TypeInContext(ctx_), it->second, (v->name + ".load").c_str());
                         }
                         else if (typeIt->second == float_t_)
@@ -2405,7 +2378,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
 
         if (builtinFunctions_ && builtinFunctions_->isBuiltin(c->callee))
         {
-            // Generate arguments
+
             std::vector<LLVMValueRef> args;
             for (const auto &arg : c->args)
             {
@@ -2416,8 +2389,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             bool isVoidFunction = (builtin && LLVMGetTypeKind(builtin->returnType) == LLVMVoidTypeKind);
 
             LLVMValueRef result = builtinFunctions_->generateBuiltinCall(c->callee, args);
-            // Always return for builtins, even if result is null (for void functions)
-            // or a falsy LLVM value (like i1 false/0)
+
             if (isVoidFunction || result != nullptr)
             {
                 return result;
@@ -2433,10 +2405,10 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
             auto it = g_function_map_->find(c->callee);
             if (it == g_function_map_->end())
             {
-                // Check if callee is a variable holding a function pointer
+
                 if (g_named_values_ && g_named_values_->find(c->callee) != g_named_values_->end())
                 {
-                    // This is a call through a function pointer variable
+
                     TypeInfo calleeType;
                     auto varTypeIt = variableTypes_.find(c->callee);
                     if (varTypeIt != variableTypes_.end())
@@ -2444,14 +2416,12 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                         calleeType = varTypeIt->second;
                     }
 
-                    // Handle if it's a function pointer type OR a pointer (including extern global function pointers)
                     if (calleeType.type == QuarkType::FunctionPointer || calleeType.type == QuarkType::Pointer)
                     {
-                        // Get the function pointer value
+
                         LLVMValueRef funcPtrStorage = (*g_named_values_)[c->callee];
 
-                        // Determine the type to load
-                        LLVMTypeRef loadType = int8ptr_t_; // default to void*
+                        LLVMTypeRef loadType = int8ptr_t_;
                         if (g_named_types_)
                         {
                             auto typeIt = g_named_types_->find(c->callee);
@@ -2461,18 +2431,15 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                             }
                         }
 
-                        // Load the function pointer from the storage (could be alloca or global)
                         LLVMValueRef funcPtr = LLVMBuildLoad2(builder_, loadType, funcPtrStorage, "funcptr.load");
 
-                        // Build args
                         std::vector<LLVMValueRef> args;
                         for (auto &arg : c->args)
                         {
                             args.push_back(genExpr(arg.get()));
                         }
 
-                        // Build the LLVM function type from the function pointer info
-                        LLVMTypeRef returnType = int32_t_; // default
+                        LLVMTypeRef returnType = int32_t_;
                         std::vector<LLVMTypeRef> paramTypes;
 
                         if (calleeType.funcPtrInfo)
@@ -2527,7 +2494,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                                 }
                                 else if (paramTypeStr.find('*') != std::string::npos)
                                 {
-                                    // Pointer type - default to void*
+
                                     paramTypes.push_back(int8ptr_t_);
                                 }
                                 else
@@ -2538,21 +2505,19 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                         }
                         else
                         {
-                            // Fallback: infer from arguments
+
                             for (size_t i = 0; i < args.size(); ++i)
                             {
                                 paramTypes.push_back(LLVMTypeOf(args[i]));
                             }
                         }
 
-                        // Build the function type
                         LLVMTypeRef funcType = LLVMFunctionType(
                             returnType,
                             paramTypes.empty() ? nullptr : paramTypes.data(),
                             static_cast<unsigned>(paramTypes.size()),
                             0);
 
-                        // Make the indirect call
                         const char *callName = (returnType == LLVMVoidTypeInContext(ctx_)) ? "" : "indirectcall";
                         return LLVMBuildCall2(
                             builder_,
@@ -2767,7 +2732,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                             }
                             else if (expTy == float_t_)
                             {
-                                // Coerce to float
+
                                 TypeInfo at = inferType(c->args[i].get());
                                 if (at.type == QuarkType::Float)
                                 {
@@ -2790,7 +2755,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                             }
                             else if (expTy == double_t_)
                             {
-                                // Coerce to double
+
                                 TypeInfo at = inferType(c->args[i].get());
                                 if (at.type == QuarkType::Double)
                                 {
@@ -2828,7 +2793,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                             }
                             else
                             {
-                                // String or other types
+
                                 argVal = genExpr(c->args[i].get());
                             }
                         }
@@ -2845,7 +2810,7 @@ LLVMValueRef ExpressionCodeGen::genExpr(ExprAST *expr)
                             }
                             else
                             {
-                                // String or other types
+
                                 argVal = genExpr(c->args[i].get());
                             }
                         }
@@ -2938,7 +2903,6 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
         return LLVMConstInt(LLVMInt32TypeInContext(ctx_), static_cast<long long>(n->value), 0);
     }
 
-    // Handle float literal in integer context - convert to int
     if (auto *f = dynamic_cast<FloatLiteralExpr *>(expr))
     {
         return LLVMConstInt(LLVMInt32TypeInContext(ctx_), static_cast<long long>(f->value), 0);
@@ -2963,7 +2927,6 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                 throw std::runtime_error("field '" + v->name + "' is not an integer type in integer context");
             }
 
-            // Get the "this" parameter
             auto thisIt = g_named_values_->find("this");
             if (thisIt == g_named_values_->end())
             {
@@ -3001,7 +2964,6 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
             LLVMValueRef thisPtr = LLVMBuildLoad2(builder_, LLVMPointerType(structTypeIt->second, 0), thisIt->second, "this_ptr.load");
             LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structTypeIt->second, thisPtr, fieldIndex, (v->name + ".ptr").c_str());
 
-            // Load the integer field value
             return LLVMBuildLoad2(builder_, int32_t_, fieldPtr, (v->name + ".load").c_str());
         }
 
@@ -3033,7 +2995,7 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                 {
                     loaded = val;
                 }
-                // Normalize to i32
+
                 if (w == 32)
                 {
                     return (LLVMGetTypeKind(LLVMTypeOf(loaded)) == LLVMIntegerTypeKind && LLVMGetIntTypeWidth(LLVMTypeOf(loaded)) == 32)
@@ -3045,7 +3007,7 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                     return LLVMBuildTrunc(builder_, loaded, LLVMInt32TypeInContext(ctx_), "trunc_to_i32");
                 }
                 else
-                { // w < 32
+                {
                     QuarkType q = getVariableType(v->name);
                     if (isSignedIntegerType(q))
                     {
@@ -3057,7 +3019,7 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                     }
                 }
             }
-            // Not an integer
+
             throw std::runtime_error("variable is not integer in integer context");
         }
 
@@ -3085,7 +3047,6 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
 
         LLVMValueRef ptrValue = genExpr(deref->operand.get());
 
-        // Ensure pointer type
         if (LLVMGetTypeKind(LLVMTypeOf(ptrValue)) != LLVMPointerTypeKind)
         {
             auto *er = errorReporter();
@@ -3118,10 +3079,10 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
         {
             LLVMValueRef zero = LLVMConstInt(LLVMInt32TypeInContext(ctx_), 0, 0);
             LLVMValueRef cmp = LLVMBuildICmp(builder_, LLVMIntEQ, operand, zero, "iszero");
-            // Convert back to i32 (0 or 1)
+
             return LLVMBuildZExt(builder_, cmp, LLVMInt32TypeInContext(ctx_), "boolnot");
         }
-        else if (u->op == '~') // Bitwise NOT
+        else if (u->op == '~')
         {
             return LLVMBuildNot(builder_, operand, "bitnot");
         }
@@ -3145,17 +3106,17 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
             return LLVMBuildSDiv(builder_, L, R, "divtmp");
         case '%':
             return LLVMBuildSRem(builder_, L, R, "modtmp");
-        // Bitwise operators
+
         case 'A':
-            return LLVMBuildAnd(builder_, L, R, "bitand"); // Bitwise AND
+            return LLVMBuildAnd(builder_, L, R, "bitand");
         case 'O':
-            return LLVMBuildOr(builder_, L, R, "bitor"); // Bitwise OR
+            return LLVMBuildOr(builder_, L, R, "bitor");
         case 'X':
-            return LLVMBuildXor(builder_, L, R, "bitxor"); // Bitwise XOR
+            return LLVMBuildXor(builder_, L, R, "bitxor");
         case 'L':
-            return LLVMBuildShl(builder_, L, R, "shl"); // Shift left
+            return LLVMBuildShl(builder_, L, R, "shl");
         case 'R':
-            return LLVMBuildAShr(builder_, L, R, "shr"); // Arithmetic shift right
+            return LLVMBuildAShr(builder_, L, R, "shr");
         default:
             throw std::runtime_error("unsupported binary op in integer expression");
         }
@@ -3170,12 +3131,12 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
         auto it = g_function_map_->find(c->callee);
         if (it == g_function_map_->end())
         {
-            // Check if this is a function pointer variable call
+
             auto varTypeIt = variableTypes_.find(c->callee);
             if (varTypeIt != variableTypes_.end() &&
                 (varTypeIt->second.type == QuarkType::FunctionPointer || varTypeIt->second.type == QuarkType::Pointer))
             {
-                // Generate function pointer call using genExpr which handles this
+
                 return genExpr(expr);
             }
             throw std::runtime_error("unknown function '" + c->callee + "' in integer context");
@@ -3231,12 +3192,12 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                         }
                         else if (expectedTypes[i] == LLVMPointerType(int8ptr_t_, 0))
                         {
-                            // char** (array of strings)
+
                             expectedQuarkType = QuarkType::Array;
                         }
                         else if (expectedTypes[i] == LLVMPointerType(int32_t_, 0))
                         {
-                            // int* (integer pointer)
+
                             expectedQuarkType = QuarkType::Pointer;
                         }
                         else if (expectedTypes[i] == bool_t_)
@@ -3327,7 +3288,7 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                             }
                             else
                             {
-                                // String or other types
+
                                 argVal = genExpr(c->args[i].get());
                             }
                         }
@@ -3368,7 +3329,6 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                     unsigned w = LLVMGetIntTypeWidth(retTy);
                     if (w == 32)
                     {
-                        // ok
                     }
                     else if (w > 32)
                     {
@@ -3408,13 +3368,12 @@ LLVMValueRef ExpressionCodeGen::genExprInt(ExprAST *expr)
                 unsigned w = LLVMGetIntTypeWidth(returnType);
                 if (w == 32)
                 {
-                    // ok
                 }
                 else if (w > 32)
                 {
                     result = LLVMBuildTrunc(builder_, result, LLVMInt32TypeInContext(ctx_), "trunc_to_i32");
                 }
-                else /* w < 32 */
+                else
                 {
                     if (isSignedIntegerType(typeIt->second.type))
                     {
@@ -3580,7 +3539,6 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                 throw std::runtime_error("field '" + v->name + "' is not a boolean type in boolean context");
             }
 
-            // Get the "this" parameter
             auto thisIt = g_named_values_->find("this");
             if (thisIt == g_named_values_->end())
             {
@@ -3617,7 +3575,6 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
 
             LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structTypeIt->second, thisIt->second, fieldIndex, (v->name + ".ptr").c_str());
 
-            // Load the boolean field value
             return LLVMBuildLoad2(builder_, bool_t_, fieldPtr, (v->name + ".load").c_str());
         }
 
@@ -3681,7 +3638,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
 
     if (auto *c = dynamic_cast<CallExprAST *>(expr))
     {
-        // Check if it's a builtin function first
+
         if (builtinFunctions_ && builtinFunctions_->isBuiltin(c->callee))
         {
             std::vector<LLVMValueRef> args;
@@ -3696,7 +3653,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
             LLVMValueRef result = builtinFunctions_->generateBuiltinCall(c->callee, args);
             if (isVoidFunction || result != nullptr)
             {
-                // For non-boolean return types, convert to bool
+
                 if (builtin && builtin->returnType != bool_t_)
                 {
                     if (LLVMGetTypeKind(builtin->returnType) == LLVMIntegerTypeKind)
@@ -3708,7 +3665,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                 return result;
             }
         }
-        
+
         auto it = functionTypes_.find(c->callee);
         if (it != functionTypes_.end() && it->second.type == QuarkType::Boolean)
         {
@@ -3736,7 +3693,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                             }
                             else
                             {
-                                // String or other types
+
                                 argVal = genExpr(c->args[i].get());
                             }
                         }
@@ -3861,7 +3818,6 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
             return LLVMBuildNot(builder_, R, "nottmp");
         }
 
-        // Comparison operators
         if (b->op == '=' || b->op == 'n' || b->op == '<' || b->op == '>' || b->op == 'l' || b->op == 'g')
         {
             TypeInfo lhsType;
@@ -3880,14 +3836,14 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                     isStringComparison = true;
                 if (lhsType.type == QuarkType::Boolean && rhsType.type == QuarkType::Boolean)
                     isBooleanComparison = true;
-                // Handle pointer/null comparisons
+
                 if ((lhsType.type == QuarkType::Pointer || lhsType.type == QuarkType::Null) &&
                     (rhsType.type == QuarkType::Pointer || rhsType.type == QuarkType::Null))
                 {
-                    // Pointer comparison - use genExpr and compare pointers directly
+
                     LLVMValueRef L = genExpr(b->lhs.get());
                     LLVMValueRef R = genExpr(b->rhs.get());
-                    // Convert pointers to integers for comparison
+
                     LLVMTypeRef intptrType = LLVMInt64TypeInContext(ctx_);
                     LLVMValueRef Lint = LLVMBuildPtrToInt(builder_, L, intptrType, "ptr_to_int_l");
                     LLVMValueRef Rint = LLVMBuildPtrToInt(builder_, R, intptrType, "ptr_to_int_r");
@@ -3950,7 +3906,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
 
             if (isStringComparison)
             {
-                // String comparison
+
                 LLVMValueRef L = genExpr(b->lhs.get());
                 LLVMValueRef R = genExpr(b->rhs.get());
 
@@ -3967,7 +3923,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
 
                             if (isDirectParam)
                             {
-                                L = it->second; // Use parameter directly
+                                L = it->second;
                             }
                             else
                             {
@@ -3989,7 +3945,7 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
 
                             if (isDirectParam)
                             {
-                                R = it->second; // Use parameter directly
+                                R = it->second;
                             }
                             else
                             {
@@ -4058,21 +4014,18 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                     }
                 }
 
-                // Check for floating-point comparison
                 bool isFloatComparison = (lhsTypeKnown && (lhsType.type == QuarkType::Float || lhsType.type == QuarkType::Double)) ||
                                          (rhsTypeKnown && (rhsType.type == QuarkType::Float || rhsType.type == QuarkType::Double));
 
                 if (isFloatComparison)
                 {
-                    // Float/double comparison
+
                     LLVMValueRef L = genExpr(b->lhs.get());
                     LLVMValueRef R = genExpr(b->rhs.get());
 
-                    // Coerce types if needed
                     LLVMTypeRef lType = LLVMTypeOf(L);
                     LLVMTypeRef rType = LLVMTypeOf(R);
 
-                    // Promote to double if either is double
                     bool useDouble = (lType == double_t_ || rType == double_t_);
                     LLVMTypeRef targetType = useDouble ? double_t_ : float_t_;
 
@@ -4118,7 +4071,6 @@ LLVMValueRef ExpressionCodeGen::genExprBool(ExprAST *expr)
                     }
                 }
 
-                // Integer comparison
                 LLVMValueRef L = genExprInt(b->lhs.get());
                 LLVMValueRef R = genExprInt(b->rhs.get());
 
@@ -4168,7 +4120,6 @@ LLVMValueRef ExpressionCodeGen::genStructLiteral(StructLiteralExpr *structLitera
         throw std::runtime_error("struct symbol tables not initialized");
     }
 
-    // Find the struct type
     auto typeIt = g_struct_types_->find(structLiteral->structName);
     if (typeIt == g_struct_types_->end())
     {
@@ -4176,7 +4127,6 @@ LLVMValueRef ExpressionCodeGen::genStructLiteral(StructLiteralExpr *structLitera
     }
     LLVMTypeRef structType = typeIt->second;
 
-    // Find the struct definition
     auto defIt = g_struct_defs_->find(structLiteral->structName);
     if (defIt == g_struct_defs_->end())
     {
@@ -4200,7 +4150,6 @@ LLVMValueRef ExpressionCodeGen::genStructLiteral(StructLiteralExpr *structLitera
             collectInheritedFields(currentStruct->parentName);
         }
 
-        // Add this struct's fields
         for (const auto &field : currentStruct->fields)
         {
             allFields.push_back(field);
@@ -4212,7 +4161,6 @@ LLVMValueRef ExpressionCodeGen::genStructLiteral(StructLiteralExpr *structLitera
         collectInheritedFields(structDef->parentName);
     }
 
-    // Add this struct's own fields
     for (const auto &field : structDef->fields)
     {
         allFields.push_back(field);
@@ -4237,7 +4185,6 @@ LLVMValueRef ExpressionCodeGen::genStructLiteral(StructLiteralExpr *structLitera
         }
         size_t fieldIndex = fieldIt->second;
 
-        // Get the expected field type
         const std::string &fieldTypeName = allFields[fieldIndex].second;
 
         LLVMValueRef fieldVal;
@@ -4259,12 +4206,10 @@ LLVMValueRef ExpressionCodeGen::genStructLiteral(StructLiteralExpr *structLitera
         }
 
         LLVMValueRef indices[2] = {
-            LLVMConstInt(LLVMInt32Type(), 0, 0),         // struct index
-            LLVMConstInt(LLVMInt32Type(), fieldIndex, 0) // field index
-        };
+            LLVMConstInt(LLVMInt32Type(), 0, 0),
+            LLVMConstInt(LLVMInt32Type(), fieldIndex, 0)};
         LLVMValueRef fieldPtr = LLVMBuildGEP2(builder_, structType, structAlloca, indices, 2, "field_ptr");
 
-        // Store the value
         LLVMBuildStore(builder_, fieldVal, fieldPtr);
     }
 
@@ -4278,27 +4223,23 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
         throw std::runtime_error("symbol tables not initialized");
     }
 
-    // Handle nested member access (e.g., msg.author.username)
     if (auto *nestedAccess = dynamic_cast<MemberAccessExpr *>(memberAccess->object.get()))
     {
-        // Recursively evaluate the nested access to get the struct value
+
         LLVMValueRef nestedValue = genMemberAccess(nestedAccess);
 
-        // Get the type info of the nested field
         TypeInfo nestedTypeInfo = inferType(nestedAccess);
         if (nestedTypeInfo.type != QuarkType::Struct)
         {
             throw std::runtime_error("nested member access on non-struct type");
         }
 
-        // Get the struct definition
         auto defIt = g_struct_defs_->find(nestedTypeInfo.structName);
         if (defIt == g_struct_defs_->end())
         {
             throw std::runtime_error("struct definition not found: " + nestedTypeInfo.structName);
         }
 
-        // Collect all fields including inherited ones
         std::vector<std::pair<std::string, std::string>> allFields;
         std::function<void(const std::string &)> collectInheritedFields = [&](const std::string &currentStructName)
         {
@@ -4317,7 +4258,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
         };
         collectInheritedFields(nestedTypeInfo.structName);
 
-        // Find the field index
         int fieldIndex = -1;
         for (size_t i = 0; i < allFields.size(); i++)
         {
@@ -4332,7 +4272,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
             throw std::runtime_error("field not found: " + memberAccess->fieldName + " in struct " + nestedTypeInfo.structName);
         }
 
-        // Get the struct LLVM type
         auto structTypeIt = g_struct_types_->find(nestedTypeInfo.structName);
         if (structTypeIt == g_struct_types_->end())
         {
@@ -4340,24 +4279,22 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
         }
         LLVMTypeRef structType = structTypeIt->second;
 
-        // Check if nestedValue is a struct value or a pointer
         LLVMTypeRef nestedValueType = LLVMTypeOf(nestedValue);
         LLVMTypeKind nestedKind = LLVMGetTypeKind(nestedValueType);
 
         LLVMValueRef fieldValue;
         if (nestedKind == LLVMStructTypeKind)
         {
-            // It's a struct value - use extractvalue
+
             fieldValue = LLVMBuildExtractValue(builder_, nestedValue, fieldIndex, "nested_member_val");
         }
         else if (nestedKind == LLVMPointerTypeKind)
         {
-            // It's a pointer - use GEP and load
+
             LLVMTypeRef structPtrTy = LLVMPointerType(structType, 0);
             LLVMValueRef basePtr = LLVMBuildBitCast(builder_, nestedValue, structPtrTy, "nested_ptr_cast");
             LLVMValueRef fieldPtr = LLVMBuildStructGEP2(builder_, structType, basePtr, fieldIndex, "nested_member_ptr");
 
-            // Determine field type for load
             const std::string &fieldTypeName = allFields[fieldIndex].second;
             LLVMTypeRef fieldType;
             if (fieldTypeName == "str")
@@ -4381,7 +4318,7 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                 }
                 else
                 {
-                    fieldType = int8ptr_t_; // fallback
+                    fieldType = int8ptr_t_;
                 }
             }
             fieldValue = LLVMBuildLoad2(builder_, fieldType, fieldPtr, "nested_member_val");
@@ -4396,7 +4333,7 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
 
     if (auto *varExpr = dynamic_cast<VariableExprAST *>(memberAccess->object.get()))
     {
-        // Get the struct instance
+
         auto it = g_named_values_->find(varExpr->name);
         if (it == g_named_values_->end())
         {
@@ -4449,7 +4386,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                     collectInheritedFields(currentStruct->parentName);
                 }
 
-                // Add this struct's fields
                 for (const auto &field : currentStruct->fields)
                 {
                     allFields.push_back(field);
@@ -4473,7 +4409,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                 throw std::runtime_error("field not found: " + memberAccess->fieldName + " in struct " + typeInfo.structName);
             }
 
-            // Get the struct LLVM type
             auto structTypeIt = g_struct_types_->find(typeInfo.structName);
             if (structTypeIt == g_struct_types_->end())
             {
@@ -4632,7 +4567,7 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                 }
                 else if (!fieldTypeName.empty() && fieldTypeName.back() == '*')
                 {
-                    // Pointer-typed field
+
                     std::string base = fieldTypeName.substr(0, fieldTypeName.size() - 1);
                     if (base == "void" || base == "char" || base == "str")
                     {
@@ -4669,7 +4604,7 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                 }
                 else
                 {
-                    // It's a struct type
+
                     auto structFieldTypeIt = g_struct_types_->find(fieldTypeName);
                     if (structFieldTypeIt != g_struct_types_->end())
                     {
@@ -4681,7 +4616,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                     }
                 }
 
-                // Load the field value
                 fieldValue = LLVMBuildLoad2(builder_, fieldType, fieldPtr, "member_val");
             }
 
@@ -4760,7 +4694,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                     collectInheritedFields(currentStruct->parentName);
                 }
 
-                // Add this struct's fields
                 for (const auto &field : currentStruct->fields)
                 {
                     allFields.push_back(field);
@@ -4784,7 +4717,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                 throw std::runtime_error("field not found: " + memberAccess->fieldName + " in struct " + structName);
             }
 
-            // Use GEP to access the field
             LLVMValueRef basePtr2 = structPtr;
             if (auto *objVar = dynamic_cast<VariableExprAST *>(memberAccess->object.get()))
             {
@@ -4800,7 +4732,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                         }
                         else if (elemTy2 == structType)
                         {
-                            // already pointer-to-struct
                         }
                         else
                         {
@@ -4912,7 +4843,7 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
             }
             else if (!fieldTypeName.empty() && fieldTypeName.back() == '*')
             {
-                // Pointer-typed field
+
                 std::string base = fieldTypeName.substr(0, fieldTypeName.size() - 1);
                 if (base == "void" || base == "char" || base == "str")
                 {
@@ -4949,7 +4880,7 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
             }
             else
             {
-                // It's a struct type
+
                 auto structFieldTypeIt = g_struct_types_->find(fieldTypeName);
                 if (structFieldTypeIt != g_struct_types_->end())
                 {
@@ -4961,7 +4892,6 @@ LLVMValueRef ExpressionCodeGen::genMemberAccess(MemberAccessExpr *memberAccess)
                 }
             }
 
-            // Load the field value
             LLVMValueRef fieldValue = LLVMBuildLoad2(builder_, fieldType, fieldPtr, "member_val");
             return fieldValue;
         }
@@ -4988,7 +4918,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
     {
         std::vector<LLVMValueRef> args;
         LLVMValueRef asI8 = LLVMBuildPointerCast(builder_, objectValue, int8ptr_t_, "arr_i8");
-        // Handle supported methods
+
         if (methodCall->methodName == "count" || methodCall->methodName == "length")
         {
             args.push_back(asI8);
@@ -4997,7 +4927,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
         if (methodCall->methodName == "push")
         {
             args.push_back(asI8);
-            // elem pointer and elemSize
+
             if (methodCall->args.size() != 2)
                 throw CodeGenError("array.push expects 2 arguments: &elem, elemSize", methodCall->location);
             LLVMValueRef elemPtr = genExpr(methodCall->args[0].get());
@@ -5039,7 +4969,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
 
     if (objType.type == QuarkType::Map)
     {
-        // Ensure map runtime is declared
+
         declareNativeMapRuntime();
 
         if (methodCall->methodName == "get")
@@ -5059,7 +4989,6 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
             LLVMValueRef key = genExpr(methodCall->args[0].get());
             LLVMValueRef value = genExpr(methodCall->args[1].get());
 
-            // Convert value to i8*
             LLVMValueRef valueAsI8Ptr;
             LLVMTypeRef valType = LLVMTypeOf(value);
             LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -5134,7 +5063,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
 
     if (objType.type == QuarkType::List)
     {
-        // Ensure list runtime is declared
+
         declareNativeListRuntime();
 
         if (methodCall->methodName == "push" || methodCall->methodName == "append")
@@ -5143,7 +5072,6 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
                 throw CodeGenError("list.push expects 1 argument: value", methodCall->location);
             LLVMValueRef value = genExpr(methodCall->args[0].get());
 
-            // Convert value to i8*
             LLVMValueRef valueAsI8Ptr;
             LLVMTypeRef valType = LLVMTypeOf(value);
             LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -5189,7 +5117,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
             LLVMValueRef listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
             LLVMValueRef args[] = {objectValue, index};
             LLVMValueRef ptrResult = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listGetFn), listGetFn, args, 2, "list_get_ptr");
-            // Convert i8* back to int (the value was stored via IntToPtr)
+
             return LLVMBuildPtrToInt(builder_, ptrResult, int32_t_, "list_get_int");
         }
         if (methodCall->methodName == "set")
@@ -5199,7 +5127,6 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
             LLVMValueRef index = genExprInt(methodCall->args[0].get());
             LLVMValueRef value = genExpr(methodCall->args[1].get());
 
-            // Convert value to i8*
             LLVMValueRef valueAsI8Ptr;
             LLVMTypeRef valType = LLVMTypeOf(value);
             LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -5250,7 +5177,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
 
     if (objType.type == QuarkType::Struct)
     {
-        // Resolve struct type name
+
         std::string structName = objType.structName;
         if (structName.empty())
         {
@@ -5300,7 +5227,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
 
         if (findIt == g_function_map_->end())
         {
-            // Not found in hierarchy
+
             std::string triedName = structName + "::" + methodCall->methodName;
             throw CodeGenError("instance method '" + triedName + "' not found (and no inherited method found)", methodCall->location);
         }
@@ -5447,7 +5374,6 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
             coercedSelfPtr = LLVMBuildBitCast(builder_, objectPtr, expectedSelfType, "self.to.parent");
         }
 
-        // Push self first
         args.push_back(coercedSelfPtr);
 
         LLVMValueRef dynName = nullptr;
@@ -5575,7 +5501,7 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
                         auto fit = g_function_map_->find(targetName);
                         if (fit == g_function_map_->end())
                         {
-                            // Function not found - still need to terminate basic block
+
                             LLVMBuildBr(builder_, mergeBB);
                             return;
                         }
@@ -5592,9 +5518,9 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
                         }
                         std::vector<LLVMValueRef> callArgs;
                         callArgs.push_back(selfForCall);
-                        // Hidden dyn name next
+
                         callArgs.push_back(dynName);
-                        // User args with type guidance
+
                         if (g_function_param_types_)
                         {
                             auto pti = g_function_param_types_->find(targetName);
@@ -5638,25 +5564,24 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
                         LLVMBuildBr(builder_, mergeBB);
                     };
 
-                    // Build chain of comparisons
                     LLVMBasicBlockRef nextBB = nullptr;
                     for (const auto &cand : candidates)
                     {
                         if (cand == structName)
                             continue;
-                        // Compare dynName to cand
+
                         LLVMBasicBlockRef curBB = LLVMGetInsertBlock(builder_);
                         LLVMValueRef fnVal = LLVMGetBasicBlockParent(curBB);
                         LLVMBasicBlockRef thenBB = LLVMAppendBasicBlockInContext(ctx_, fnVal, "dyn_then");
                         LLVMBasicBlockRef contBB = LLVMAppendBasicBlockInContext(ctx_, fnVal, "dyn_cont");
-                        // strcmp(dynName, "cand") == 0
+
                         LLVMValueRef candStr = LLVMBuildGlobalStringPtr(builder_, cand.c_str(), "dyn_cand");
                         LLVMValueRef sargs[] = {dynName, candStr};
                         LLVMValueRef cmpRes = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(strcmpFn), strcmpFn, sargs, 2, "dyn_strcmp");
                         LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
                         LLVMValueRef isEq = LLVMBuildICmp(builder_, LLVMIntEQ, cmpRes, zero, "dyn_is_eq");
                         LLVMBuildCondBr(builder_, isEq, thenBB, contBB);
-                        // then: call target override
+
                         LLVMPositionBuilderAtEnd(builder_, thenBB);
                         genCallForStruct(cand);
                         LLVMPositionBuilderAtEnd(builder_, contBB);
@@ -5665,7 +5590,6 @@ LLVMValueRef ExpressionCodeGen::genMethodCall(MethodCallExpr *methodCall)
 
                     genCallForStruct(targetStructName);
 
-                    // Merge
                     LLVMPositionBuilderAtEnd(builder_, mergeBB);
                     if (!isVoid)
                     {
@@ -6028,7 +5952,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
         if (verbose_)
             printf("[codegen] genStaticCall: treating as map method call on '%s'\n", staticCall->structName.c_str());
 
-        // Ensure map runtime is declared
         declareNativeMapRuntime();
 
         VariableExprAST varExpr(staticCall->structName);
@@ -6051,7 +5974,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
             LLVMValueRef key = genExpr(staticCall->args[0].get());
             LLVMValueRef value = genExpr(staticCall->args[1].get());
 
-            // Convert value to i8*
             LLVMValueRef valueAsI8Ptr;
             LLVMTypeRef valType = LLVMTypeOf(value);
             LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -6129,7 +6051,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
         if (verbose_)
             printf("[codegen] genStaticCall: treating as list method call on '%s'\n", staticCall->structName.c_str());
 
-        // Ensure list runtime is declared
         declareNativeListRuntime();
 
         VariableExprAST varExpr(staticCall->structName);
@@ -6141,7 +6062,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
                 throw CodeGenError("list.push expects 1 argument: value", staticCall->location);
             LLVMValueRef value = genExpr(staticCall->args[0].get());
 
-            // Convert value to i8*
             LLVMValueRef valueAsI8Ptr;
             LLVMTypeRef valType = LLVMTypeOf(value);
             LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -6187,7 +6107,7 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
             LLVMValueRef listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
             LLVMValueRef args[] = {objectValue, index};
             LLVMValueRef ptrResult = LLVMBuildCall2(builder_, LLVMGlobalGetValueType(listGetFn), listGetFn, args, 2, "list_get_ptr");
-            // Convert i8* back to int (the value was stored via IntToPtr)
+
             return LLVMBuildPtrToInt(builder_, ptrResult, int32_t_, "list_get_int");
         }
         if (staticCall->methodName == "set")
@@ -6197,7 +6117,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
             LLVMValueRef index = genExprInt(staticCall->args[0].get());
             LLVMValueRef value = genExpr(staticCall->args[1].get());
 
-            // Convert value to i8*
             LLVMValueRef valueAsI8Ptr;
             LLVMTypeRef valType = LLVMTypeOf(value);
             LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -6396,7 +6315,7 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
                 }
                 else
                 {
-                    // String or other types
+
                     argVal = genExpr(staticCall->args[i].get());
                 }
             }
@@ -6428,7 +6347,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
     if (verbose_)
         printf("[codegen] genExpr: calling static method %s\n", mangledName.c_str());
 
-    // Get the function type
     LLVMTypeRef functionType = LLVMGlobalGetValueType(function);
 
     if (verbose_)
@@ -6437,7 +6355,6 @@ LLVMValueRef ExpressionCodeGen::genStaticCall(StaticCallExpr *staticCall)
     LLVMTypeRef returnType = LLVMGetReturnType(functionType);
     bool isVoid = (LLVMGetTypeKind(returnType) == LLVMVoidTypeKind);
 
-    // Call the function
     LLVMValueRef call = LLVMBuildCall2(builder_, functionType, function, args.data(), static_cast<unsigned int>(args.size()), isVoid ? "" : "call");
 
     if (verbose_)
@@ -6548,9 +6465,9 @@ LLVMTypeRef ExpressionCodeGen::quarkTypeToLLVMType(QuarkType type)
     case QuarkType::Void:
         return LLVMVoidTypeInContext(ctx_);
     case QuarkType::Pointer:
-        return int8ptr_t_; // Generic pointer type
+        return int8ptr_t_;
     case QuarkType::Array:
-        return int8ptr_t_; // Array decays to pointer
+        return int8ptr_t_;
     case QuarkType::Struct:
         return int8ptr_t_;
     default:
@@ -6644,7 +6561,6 @@ LLVMValueRef ExpressionCodeGen::genDereference(DereferenceExpr *deref)
 
     LLVMValueRef ptrValue = genExpr(deref->operand.get());
 
-    // Ensure we have a pointer
     LLVMTypeRef ptrTy = LLVMTypeOf(ptrValue);
     if (LLVMGetTypeKind(ptrTy) != LLVMPointerTypeKind)
     {
@@ -6767,26 +6683,22 @@ LLVMValueRef ExpressionCodeGen::genIndirectCall(IndirectCallExpr *indirectCall)
     if (verbose_)
         printf("[codegen] generating indirect call through function pointer\n");
 
-    // Get the function pointer value
     LLVMValueRef funcPtr = genExpr(indirectCall->callee.get());
 
-    // Build the argument list
     std::vector<LLVMValueRef> args;
     for (auto &arg : indirectCall->args)
     {
         args.push_back(genExpr(arg.get()));
     }
 
-    // Infer the function pointer type to build the call
     TypeInfo calleeType = inferType(indirectCall->callee.get());
 
-    // Build the LLVM function type from the function pointer info
     LLVMTypeRef returnType = LLVMVoidTypeInContext(ctx_);
     std::vector<LLVMTypeRef> paramTypes;
 
     if (calleeType.funcPtrInfo)
     {
-        // Use the function pointer info to build the function type
+
         std::string retTypeStr = calleeType.funcPtrInfo->returnType;
         if (retTypeStr == "void")
         {
@@ -6837,31 +6749,28 @@ LLVMValueRef ExpressionCodeGen::genIndirectCall(IndirectCallExpr *indirectCall)
             }
             else
             {
-                // Default to int for unknown types
+
                 paramTypes.push_back(int32_t_);
             }
         }
     }
     else
     {
-        // Fallback: infer from arguments
+
         for (size_t i = 0; i < args.size(); ++i)
         {
             paramTypes.push_back(LLVMTypeOf(args[i]));
         }
-        // Default return type to int
+
         returnType = int32_t_;
     }
 
-    // Build the function type
     LLVMTypeRef funcType = LLVMFunctionType(
         returnType,
         paramTypes.empty() ? nullptr : paramTypes.data(),
         static_cast<unsigned>(paramTypes.size()),
-        0 // not vararg
-    );
+        0);
 
-    // Make the indirect call
     const char *callName = (returnType == LLVMVoidTypeInContext(ctx_)) ? "" : "indirectcall";
     return LLVMBuildCall2(
         builder_,
@@ -6903,7 +6812,6 @@ LLVMValueRef ExpressionCodeGen::genArrayLiteral(ArrayLiteralExpr *arrayLiteral)
         throw CodeGenError("Cannot generate code for empty array literal", {});
     }
 
-    // Determine array length
     unsigned length = (unsigned)arrayLiteral->elements.size();
     LLVMValueRef lengthVal = LLVMConstInt(LLVMInt32TypeInContext(ctx_), length, 0);
 
@@ -6936,11 +6844,10 @@ LLVMValueRef ExpressionCodeGen::genArrayLiteral(ArrayLiteralExpr *arrayLiteral)
     LLVMValueRef dataBytes = LLVMBuildMul(builder_, lengthVal, elemSize, "arr_data_bytes");
     LLVMValueRef totalBytes = LLVMBuildAdd(builder_, dataBytes, LLVMConstInt(LLVMInt32TypeInContext(ctx_), 4, 0), "arr_total_bytes");
 
-    // Call malloc(totalBytes)
     LLVMValueRef mallocFn = LLVMGetNamedFunction(module_, "malloc");
     if (!mallocFn)
     {
-        // Fallback: declare if missing
+
         LLVMTypeRef mParams[] = {LLVMInt32TypeInContext(ctx_)};
         LLVMTypeRef mTy = LLVMFunctionType(LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0), mParams, 1, 0);
         mallocFn = LLVMAddFunction(module_, "malloc", mTy);
@@ -6956,7 +6863,6 @@ LLVMValueRef ExpressionCodeGen::genArrayLiteral(ArrayLiteralExpr *arrayLiteral)
     LLVMTypeRef dataPtrTy = LLVMPointerType(elementType, 0);
     LLVMValueRef dataPtr = LLVMBuildPointerCast(builder_, dataI8, dataPtrTy, "arr_data");
 
-    // Initialize elements
     for (unsigned i = 0; i < length; ++i)
     {
         LLVMValueRef elemVal = genExpr(arrayLiteral->elements[i].get());
@@ -6976,10 +6882,8 @@ LLVMValueRef ExpressionCodeGen::genMapLiteral(MapLiteralExpr *mapLiteral)
     if (verbose_)
         printf("[codegen] generating map literal with %zu pairs\n", mapLiteral->pairs.size());
 
-    // Ensure map runtime is declared
     declareNativeMapRuntime();
 
-    // Call __quark_map_new() to create the map
     LLVMValueRef mapNewFn = LLVMGetNamedFunction(module_, "__quark_map_new");
     if (!mapNewFn)
     {
@@ -6989,20 +6893,17 @@ LLVMValueRef ExpressionCodeGen::genMapLiteral(MapLiteralExpr *mapLiteral)
     LLVMTypeRef mapNewTy = LLVMGlobalGetValueType(mapNewFn);
     LLVMValueRef mapPtr = LLVMBuildCall2(builder_, mapNewTy, mapNewFn, nullptr, 0, "map_literal");
 
-    // Get __quark_map_set function
     LLVMValueRef mapSetFn = LLVMGetNamedFunction(module_, "__quark_map_set");
     if (!mapSetFn)
     {
         throw CodeGenError("__quark_map_set function not found", mapLiteral->location);
     }
 
-    // For each key-value pair, call __quark_map_set(map, key, value)
     for (const auto &pair : mapLiteral->pairs)
     {
         LLVMValueRef keyVal = genExpr(pair.first.get());
         LLVMValueRef valueVal = genExpr(pair.second.get());
 
-        // Convert value to i8* for storage
         LLVMValueRef valueAsI8Ptr;
         LLVMTypeRef valType = LLVMTypeOf(valueVal);
         LLVMTypeKind kind = LLVMGetTypeKind(valType);
@@ -7052,19 +6953,16 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess)
 
     TypeInfo arrayTypeInfo = inferType(arrayAccess->array.get());
 
-    // Handle map subscript access map["key"]
     if (arrayTypeInfo.type == QuarkType::Map)
     {
         if (verbose_)
             printf("[codegen] generating map subscript access\n");
 
-        // Ensure map runtime is declared
         declareNativeMapRuntime();
 
         LLVMValueRef mapPtr = genExpr(arrayAccess->array.get());
         LLVMValueRef keyVal = genExpr(arrayAccess->index.get());
 
-        // Call __quark_map_get(map, key)
         LLVMValueRef mapGetFn = LLVMGetNamedFunction(module_, "__quark_map_get");
         if (!mapGetFn)
         {
@@ -7080,7 +6978,6 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess)
         return result;
     }
 
-    // Handle list subscript access list[index]
     if (arrayTypeInfo.type == QuarkType::List)
     {
         if (verbose_)
@@ -7089,7 +6986,6 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess)
         LLVMValueRef listPtr = genExpr(arrayAccess->array.get());
         LLVMValueRef indexVal = genExprInt(arrayAccess->index.get());
 
-        // Call __quark_list_get(list, index)
         LLVMValueRef listGetFn = LLVMGetNamedFunction(module_, "__quark_list_get");
         if (!listGetFn)
         {
@@ -7101,7 +6997,6 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess)
         LLVMTypeRef listGetTy = LLVMGlobalGetValueType(listGetFn);
         LLVMValueRef ptrResult = LLVMBuildCall2(builder_, listGetTy, listGetFn, args, 2, "list_get_ptr");
 
-        // Convert i8* back to int (the value was stored via IntToPtr)
         LLVMValueRef result = LLVMBuildPtrToInt(builder_, ptrResult, int32_t_, "list_get_int");
 
         if (verbose_)
@@ -7109,11 +7004,10 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess)
         return result;
     }
 
-    // Handle array/string access
     LLVMValueRef arrayPtr = genExpr(arrayAccess->array.get());
     LLVMValueRef indexValue = genExprInt(arrayAccess->index.get());
 
-    LLVMTypeRef elementType = int32_t_; // default
+    LLVMTypeRef elementType = int32_t_;
 
     if (arrayTypeInfo.type == QuarkType::Array)
     {
@@ -7138,18 +7032,6 @@ LLVMValueRef ExpressionCodeGen::genArrayAccess(ArrayAccessExpr *arrayAccess)
     return result;
 }
 
-// =====================================================
-// Native Map Runtime Implementation
-// =====================================================
-// Map structure layout (hash table):
-// struct QuarkMap {
-//     int32 size;        // Number of entries
-//     int32 capacity;    // Bucket capacity
-//     i8** keys;         // Array of key strings
-//     i8** values;       // Array of value pointers (as i8*)
-//     int32* hashes;     // Pre-computed hash values for faster lookup
-// }
-
 void ExpressionCodeGen::declareNativeMapRuntime()
 {
     if (verbose_)
@@ -7160,7 +7042,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
     LLVMTypeRef voidTy = LLVMVoidTypeInContext(ctx_);
     LLVMTypeRef i1 = bool_t_;
 
-    // __quark_map_new() -> i8*
     {
         LLVMTypeRef fnTy = LLVMFunctionType(i8p, nullptr, 0, 0);
         LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_map_new");
@@ -7171,7 +7052,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
         }
     }
 
-    // __quark_map_free(map: i8*) -> void
     {
         LLVMTypeRef params[] = {i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 1, 0);
@@ -7183,7 +7063,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
         }
     }
 
-    // __quark_map_set(map: i8*, key: i8*, value: i8*) -> void
     {
         LLVMTypeRef params[] = {i8p, i8p, i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 3, 0);
@@ -7195,7 +7074,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
         }
     }
 
-    // __quark_map_get(map: i8*, key: i8*) -> i8*
     {
         LLVMTypeRef params[] = {i8p, i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(i8p, params, 2, 0);
@@ -7207,7 +7085,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
         }
     }
 
-    // __quark_map_contains(map: i8*, key: i8*) -> i1
     {
         LLVMTypeRef params[] = {i8p, i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(i1, params, 2, 0);
@@ -7219,7 +7096,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
         }
     }
 
-    // __quark_map_remove(map: i8*, key: i8*) -> i1
     {
         LLVMTypeRef params[] = {i8p, i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(i1, params, 2, 0);
@@ -7231,7 +7107,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
         }
     }
 
-    // __quark_map_len(map: i8*) -> i32
     {
         LLVMTypeRef params[] = {i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(i32, params, 1, 0);
@@ -7244,16 +7119,6 @@ void ExpressionCodeGen::declareNativeMapRuntime()
     }
 }
 
-// =====================================================
-// Native List Runtime Implementation
-// =====================================================
-// List structure layout (dynamic array):
-// struct QuarkList {
-//     int32 size;        // Number of elements
-//     int32 capacity;    // Allocated capacity
-//     i8** data;         // Array of element pointers (as i8*)
-// }
-
 void ExpressionCodeGen::declareNativeListRuntime()
 {
     if (verbose_)
@@ -7263,7 +7128,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
     LLVMTypeRef i32 = int32_t_;
     LLVMTypeRef voidTy = LLVMVoidTypeInContext(ctx_);
 
-    // __quark_list_new() -> i8*
     {
         LLVMTypeRef fnTy = LLVMFunctionType(i8p, nullptr, 0, 0);
         LLVMValueRef fn = LLVMGetNamedFunction(module_, "__quark_list_new");
@@ -7274,7 +7138,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
         }
     }
 
-    // __quark_list_free(list: i8*) -> void
     {
         LLVMTypeRef params[] = {i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 1, 0);
@@ -7286,7 +7149,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
         }
     }
 
-    // __quark_list_push(list: i8*, value: i8*) -> void
     {
         LLVMTypeRef params[] = {i8p, i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 2, 0);
@@ -7298,7 +7160,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
         }
     }
 
-    // __quark_list_get(list: i8*, index: i32) -> i8*
     {
         LLVMTypeRef params[] = {i8p, i32};
         LLVMTypeRef fnTy = LLVMFunctionType(i8p, params, 2, 0);
@@ -7310,7 +7171,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
         }
     }
 
-    // __quark_list_set(list: i8*, index: i32, value: i8*) -> void
     {
         LLVMTypeRef params[] = {i8p, i32, i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 3, 0);
@@ -7322,7 +7182,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
         }
     }
 
-    // __quark_list_remove(list: i8*, index: i32) -> void
     {
         LLVMTypeRef params[] = {i8p, i32};
         LLVMTypeRef fnTy = LLVMFunctionType(voidTy, params, 2, 0);
@@ -7334,7 +7193,6 @@ void ExpressionCodeGen::declareNativeListRuntime()
         }
     }
 
-    // __quark_list_len(list: i8*) -> i32
     {
         LLVMTypeRef params[] = {i8p};
         LLVMTypeRef fnTy = LLVMFunctionType(i32, params, 1, 0);
@@ -7352,10 +7210,8 @@ LLVMValueRef ExpressionCodeGen::genListLiteral(ListLiteralExpr *listLiteral)
     if (verbose_)
         printf("[codegen] generating list literal with %zu elements\n", listLiteral->elements.size());
 
-    // Ensure list runtime is declared
     declareNativeListRuntime();
 
-    // Call __quark_list_new() to create the list
     LLVMValueRef listNewFn = LLVMGetNamedFunction(module_, "__quark_list_new");
     if (!listNewFn)
     {
@@ -7365,19 +7221,16 @@ LLVMValueRef ExpressionCodeGen::genListLiteral(ListLiteralExpr *listLiteral)
     LLVMTypeRef listNewTy = LLVMGlobalGetValueType(listNewFn);
     LLVMValueRef listPtr = LLVMBuildCall2(builder_, listNewTy, listNewFn, nullptr, 0, "list_literal");
 
-    // Get __quark_list_push function
     LLVMValueRef listPushFn = LLVMGetNamedFunction(module_, "__quark_list_push");
     if (!listPushFn)
     {
         throw CodeGenError("__quark_list_push function not found", listLiteral->location);
     }
 
-    // For each element, call __quark_list_push(list, value)
     for (const auto &elem : listLiteral->elements)
     {
         LLVMValueRef elemVal = genExpr(elem.get());
 
-        // Convert element to i8* (store as pointer)
         LLVMValueRef elemAsI8Ptr;
         LLVMTypeRef elemType = LLVMTypeOf(elemVal);
         LLVMTypeKind kind = LLVMGetTypeKind(elemType);
@@ -7388,12 +7241,12 @@ LLVMValueRef ExpressionCodeGen::genListLiteral(ListLiteralExpr *listLiteral)
         }
         else if (kind == LLVMIntegerTypeKind)
         {
-            // Store integer as pointer-sized value
+
             elemAsI8Ptr = LLVMBuildIntToPtr(builder_, elemVal, int8ptr_t_, "int_to_ptr");
         }
         else if (kind == LLVMFloatTypeKind || kind == LLVMDoubleTypeKind)
         {
-            // Store float/double bits as pointer value
+
             LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx_);
             LLVMValueRef bits;
             if (kind == LLVMFloatTypeKind)
@@ -7409,7 +7262,7 @@ LLVMValueRef ExpressionCodeGen::genListLiteral(ListLiteralExpr *listLiteral)
         }
         else
         {
-            // For other types, try to cast
+
             elemAsI8Ptr = LLVMBuildPointerCast(builder_, elemVal, int8ptr_t_, "elem_i8p");
         }
 
