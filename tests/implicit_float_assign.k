@@ -1,7 +1,5 @@
 // EXPECT: x: 1.500000
-// EXPECT:
 // EXPECT: y: 2
-// EXPECT:
 // EXPECT: z: 3.500000
 int main() {
     // Implicitly create variables via assignment

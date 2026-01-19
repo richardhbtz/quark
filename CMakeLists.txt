@@ -76,6 +76,9 @@ find_package(ixwebsocket CONFIG REQUIRED)
 message(STATUS "Found IXWebSocket")
 message(STATUS "Using IXWebSocketConfig.cmake in: ${ixwebsocket_DIR}")
 
+find_package(GTest CONFIG REQUIRED)
+message(STATUS "Found GTest")
+
 if(APPLE)
     list(APPEND LLD_LIBS lldMachO)
 elseif(WIN32)
@@ -315,8 +318,10 @@ add_custom_command(TARGET quark POST_BUILD
     $<TARGET_FILE_DIR:quark>
 )
 
-add_custom_target(run_tests
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/run_tests.sh
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Running Quark tests"
-)
+enable_testing()
+add_executable(quark_tests tests/gtest_runner.cpp)
+target_link_libraries(quark_tests PRIVATE quark_compiler GTest::gtest GTest::gtest_main)
+if(WIN32)
+    target_link_options(quark_tests PRIVATE /SUBSYSTEM:CONSOLE /NODEFAULTLIB:msvcrt.lib)
+endif()
+add_test(NAME QuarkTests COMMAND quark_tests)

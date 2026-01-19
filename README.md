@@ -110,11 +110,8 @@ cmake --build build --config Release
 ### Running Tests
 
 ```bash
-# Unix
-./scripts/run_tests.sh
-
-# Windows
-./scripts/run_tests.ps1
+cmake --build build --target quark_tests
+./build/quark_tests
 ```
 
 ## 📦 Package Manager
