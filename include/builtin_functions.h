@@ -78,6 +78,7 @@ private:
     LLVMValueRef allocateString(LLVMValueRef size);
     // Helper conversions
     LLVMValueRef intToString(LLVMValueRef intVal);
+    LLVMValueRef int64ToString(LLVMValueRef intVal);
     LLVMValueRef boolToString(LLVMValueRef boolVal);
     LLVMValueRef floatToString(LLVMValueRef floatVal);
     LLVMValueRef doubleToString(LLVMValueRef doubleVal);

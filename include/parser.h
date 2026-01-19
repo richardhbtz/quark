@@ -440,6 +440,14 @@ private:
         switch (token.kind) {
             case tok_bool: return "bool";
             case tok_int: return "int";
+            case tok_i8: return "i8";
+            case tok_i16: return "i16";
+            case tok_i32: return "i32";
+            case tok_i64: return "i64";
+            case tok_u8: return "u8";
+            case tok_u16: return "u16";
+            case tok_u32: return "u32";
+            case tok_u64: return "u64";
             case tok_str: return "str";
             case tok_float: return "float";
             case tok_double: return "double";
@@ -534,6 +542,14 @@ private:
     bool isTypeToken(const Token& token) {
         return token.kind == tok_bool ||
                token.kind == tok_int ||
+               token.kind == tok_i8 ||
+               token.kind == tok_i16 ||
+               token.kind == tok_i32 ||
+               token.kind == tok_i64 ||
+               token.kind == tok_u8 ||
+               token.kind == tok_u16 ||
+               token.kind == tok_u32 ||
+               token.kind == tok_u64 ||
                token.kind == tok_str ||
                token.kind == tok_float ||
                token.kind == tok_double ||

@@ -177,6 +177,22 @@ Token Lexer::next()
             tok.kind = tok_bool;
         else if (s == "int")
             tok.kind = tok_int;
+        else if (s == "i8")
+            tok.kind = tok_i8;
+        else if (s == "i16")
+            tok.kind = tok_i16;
+        else if (s == "i32")
+            tok.kind = tok_i32;
+        else if (s == "i64")
+            tok.kind = tok_i64;
+        else if (s == "u8")
+            tok.kind = tok_u8;
+        else if (s == "u16")
+            tok.kind = tok_u16;
+        else if (s == "u32")
+            tok.kind = tok_u32;
+        else if (s == "u64")
+            tok.kind = tok_u64;
         else if (s == "str")
             tok.kind = tok_str;
         else if (s == "float")

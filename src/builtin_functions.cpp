@@ -163,10 +163,16 @@ void BuiltinFunctions::registerAllBuiltins()
                                     asStr = boolToString(arg);
                                     allocated = true;
                                 }
-                                else
+                                else if (w <= 32)
                                 {
                                     LLVMValueRef i32v = (w == 32) ? arg : LLVMBuildSExt(builder_, arg, int32_t_, "to_i32");
                                     asStr = intToString(i32v);
+                                    allocated = true;
+                                }
+                                else
+                                {
+                                    LLVMValueRef i64v = (w == 64) ? arg : LLVMBuildSExt(builder_, arg, LLVMInt64TypeInContext(ctx_), "to_i64");
+                                    asStr = int64ToString(i64v);
                                     allocated = true;
                                 }
                             }
@@ -734,8 +740,21 @@ void BuiltinFunctions::registerMathFunctions()
                     {
                         if (args.size() != 1)
                             return LLVMConstReal(double_t_, 0.0);
+
+                        LLVMValueRef arg = args[0];
+                        LLVMTypeRef argType = LLVMTypeOf(arg);
+
+                        if (LLVMGetTypeKind(argType) == LLVMIntegerTypeKind)
+                        {
+                            arg = LLVMBuildSIToFP(builder_, arg, double_t_, "int_to_double");
+                        }
+                        else if (LLVMGetTypeKind(argType) == LLVMFloatTypeKind)
+                        {
+                            arg = LLVMBuildFPExt(builder_, arg, double_t_, "float_to_double");
+                        }
+
                         LLVMValueRef fabsFn = declareMathFunc("fabs", double_t_, {double_t_});
-                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fabsFn), fabsFn, const_cast<LLVMValueRef *>(&args[0]), 1, "fabs_call");
+                        return LLVMBuildCall2(builder, LLVMGlobalGetValueType(fabsFn), fabsFn, &arg, 1, "fabs_call");
                     });
 
     registerBuiltin("floor", double_t_, {double_t_}, false,
@@ -1286,6 +1305,28 @@ LLVMValueRef BuiltinFunctions::intToString(LLVMValueRef intVal)
     return buff;
 }
 
+LLVMValueRef BuiltinFunctions::int64ToString(LLVMValueRef intVal)
+{
+    LLVMValueRef nullPtr = LLVMConstNull(int8ptr_t_);
+    LLVMValueRef zero = LLVMConstInt(int32_t_, 0, 0);
+#ifdef _WIN32
+    LLVMValueRef fmt = createStringLiteral("%lld");
+#else
+    LLVMValueRef fmt = createStringLiteral("%lld");
+#endif
+    LLVMValueRef sizeArgs[] = {nullPtr, zero, fmt, intVal};
+    LLVMTypeRef snprintfTy = LLVMGlobalGetValueType(snprintf_fn_);
+    LLVMValueRef needed = LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, sizeArgs, 4, "int64_str_size");
+
+    LLVMValueRef one = LLVMConstInt(int32_t_, 1, 0);
+    LLVMValueRef allocSize = LLVMBuildAdd(builder_, needed, one, "int64_str_alloc");
+    LLVMValueRef buff = allocateString(allocSize);
+
+    LLVMValueRef writeArgs[] = {buff, allocSize, fmt, intVal};
+    LLVMBuildCall2(builder_, snprintfTy, snprintf_fn_, writeArgs, 4, "");
+    return buff;
+}
+
 LLVMValueRef BuiltinFunctions::boolToString(LLVMValueRef boolVal)
 {
     LLVMValueRef trueStr = createStringLiteral("true");
@@ -1385,10 +1426,18 @@ LLVMValueRef BuiltinFunctions::formatString(LLVMBuilderRef builder, const std::v
                 asStr = boolToString(v);
                 allocated = 1;
             }
-            else
+            else if (w <= 32)
             {
+
                 LLVMValueRef i32v = (w == 32) ? v : LLVMBuildSExt(builder, v, int32_t_, "to_i32");
                 asStr = intToString(i32v);
+                allocated = 1;
+            }
+            else
+            {
+
+                LLVMValueRef i64v = (w == 64) ? v : LLVMBuildSExt(builder, v, LLVMInt64TypeInContext(ctx_), "to_i64");
+                asStr = int64ToString(i64v);
                 allocated = 1;
             }
         }

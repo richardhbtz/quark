@@ -2030,18 +2030,22 @@ bool SemanticAnalyzer::isTypeCompatible(const TypeInfo &target, const TypeInfo &
 
 bool SemanticAnalyzer::canImplicitlyConvert(const TypeInfo &from, const TypeInfo &to)
 {
-    if (from.type == QuarkType::Int && to.type == QuarkType::Double)
+
+    if (IntegerTypeUtils::isIntegerType(from.type) && IntegerTypeUtils::isIntegerType(to.type))
         return true;
-    if (from.type == QuarkType::Int && to.type == QuarkType::Float)
+
+    if (IntegerTypeUtils::isIntegerType(from.type) && to.type == QuarkType::Double)
+        return true;
+    if (IntegerTypeUtils::isIntegerType(from.type) && to.type == QuarkType::Float)
         return true;
     if (from.type == QuarkType::Float && to.type == QuarkType::Double)
         return true;
     if (from.type == QuarkType::Double && to.type == QuarkType::Float)
         return true;
 
-    if (from.type == QuarkType::Int && to.type == QuarkType::Boolean)
+    if (IntegerTypeUtils::isIntegerType(from.type) && to.type == QuarkType::Boolean)
         return true;
-    if (from.type == QuarkType::Boolean && to.type == QuarkType::Int)
+    if (from.type == QuarkType::Boolean && IntegerTypeUtils::isIntegerType(to.type))
         return true;
 
     if (from.type == QuarkType::FunctionPointer && to.type == QuarkType::Pointer &&
@@ -2067,6 +2071,22 @@ TypeInfo SemanticAnalyzer::resolveType(const std::string &typeName)
 
     if (typeName == "int")
         return TypeInfo(QuarkType::Int);
+    if (typeName == "i8")
+        return TypeInfo(QuarkType::I8);
+    if (typeName == "i16")
+        return TypeInfo(QuarkType::I16);
+    if (typeName == "i32")
+        return TypeInfo(QuarkType::I32);
+    if (typeName == "i64")
+        return TypeInfo(QuarkType::I64);
+    if (typeName == "u8")
+        return TypeInfo(QuarkType::U8);
+    if (typeName == "u16")
+        return TypeInfo(QuarkType::U16);
+    if (typeName == "u32")
+        return TypeInfo(QuarkType::U32);
+    if (typeName == "u64")
+        return TypeInfo(QuarkType::U64);
     if (typeName == "float")
         return TypeInfo(QuarkType::Float);
     if (typeName == "double")
@@ -2174,6 +2194,22 @@ std::string SemanticAnalyzer::typeToString(const TypeInfo &type)
     {
     case QuarkType::Int:
         return "int";
+    case QuarkType::I8:
+        return "i8";
+    case QuarkType::I16:
+        return "i16";
+    case QuarkType::I32:
+        return "i32";
+    case QuarkType::I64:
+        return "i64";
+    case QuarkType::U8:
+        return "u8";
+    case QuarkType::U16:
+        return "u16";
+    case QuarkType::U32:
+        return "u32";
+    case QuarkType::U64:
+        return "u64";
     case QuarkType::Float:
         return "float";
     case QuarkType::Double:
@@ -2195,6 +2231,30 @@ std::string SemanticAnalyzer::typeToString(const TypeInfo &type)
         {
         case QuarkType::Int:
             elemStr = "int";
+            break;
+        case QuarkType::I8:
+            elemStr = "i8";
+            break;
+        case QuarkType::I16:
+            elemStr = "i16";
+            break;
+        case QuarkType::I32:
+            elemStr = "i32";
+            break;
+        case QuarkType::I64:
+            elemStr = "i64";
+            break;
+        case QuarkType::U8:
+            elemStr = "u8";
+            break;
+        case QuarkType::U16:
+            elemStr = "u16";
+            break;
+        case QuarkType::U32:
+            elemStr = "u32";
+            break;
+        case QuarkType::U64:
+            elemStr = "u64";
             break;
         case QuarkType::Float:
             elemStr = "float";

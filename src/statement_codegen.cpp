@@ -376,8 +376,22 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
         LLVMSetValueName(arg, pname.c_str());
         llvmParamIndex++;
         LLVMTypeRef paramType;
-        if (ptype == "int")
+        if (ptype == "int" || ptype == "i32")
             paramType = LLVMInt32TypeInContext(ctx_);
+        else if (ptype == "i8")
+            paramType = LLVMInt8TypeInContext(ctx_);
+        else if (ptype == "i16")
+            paramType = LLVMInt16TypeInContext(ctx_);
+        else if (ptype == "i64")
+            paramType = LLVMInt64TypeInContext(ctx_);
+        else if (ptype == "u8")
+            paramType = LLVMInt8TypeInContext(ctx_);
+        else if (ptype == "u16")
+            paramType = LLVMInt16TypeInContext(ctx_);
+        else if (ptype == "u32")
+            paramType = LLVMInt32TypeInContext(ctx_);
+        else if (ptype == "u64")
+            paramType = LLVMInt64TypeInContext(ctx_);
         else if (ptype == "float")
             paramType = float_t_;
         else if (ptype == "double")
@@ -397,9 +411,37 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             {
                 paramType = LLVMPointerType(int8ptr_t_, 0);
             }
-            else if (elementType == "int")
+            else if (elementType == "int" || elementType == "i32")
             {
                 paramType = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i8")
+            {
+                paramType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i16")
+            {
+                paramType = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i64")
+            {
+                paramType = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u8")
+            {
+                paramType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u16")
+            {
+                paramType = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u32")
+            {
+                paramType = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u64")
+            {
+                paramType = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
             }
             else if (elementType == "float")
             {
@@ -460,8 +502,22 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             LLVMDisposeMessage(argValStr);
         }
 
-        if (ptype == "int")
+        if (ptype == "int" || ptype == "i32")
             (*g_named_types_)[pname] = LLVMInt32TypeInContext(ctx_);
+        else if (ptype == "i8")
+            (*g_named_types_)[pname] = LLVMInt8TypeInContext(ctx_);
+        else if (ptype == "i16")
+            (*g_named_types_)[pname] = LLVMInt16TypeInContext(ctx_);
+        else if (ptype == "i64")
+            (*g_named_types_)[pname] = LLVMInt64TypeInContext(ctx_);
+        else if (ptype == "u8")
+            (*g_named_types_)[pname] = LLVMInt8TypeInContext(ctx_);
+        else if (ptype == "u16")
+            (*g_named_types_)[pname] = LLVMInt16TypeInContext(ctx_);
+        else if (ptype == "u32")
+            (*g_named_types_)[pname] = LLVMInt32TypeInContext(ctx_);
+        else if (ptype == "u64")
+            (*g_named_types_)[pname] = LLVMInt64TypeInContext(ctx_);
         else if (ptype == "float")
             (*g_named_types_)[pname] = float_t_;
         else if (ptype == "double")
@@ -482,9 +538,37 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             {
                 (*g_named_types_)[pname] = LLVMPointerType(int8ptr_t_, 0);
             }
-            else if (elementType == "int")
+            else if (elementType == "int" || elementType == "i32")
             {
                 (*g_named_types_)[pname] = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i8")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i16")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i64")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u8")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u16")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u32")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u64")
+            {
+                (*g_named_types_)[pname] = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
             }
             else if (elementType == "float")
             {
@@ -501,8 +585,22 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
             QuarkType elementQuarkType = QuarkType::Unknown;
             if (elementType == "str")
                 elementQuarkType = QuarkType::String;
-            else if (elementType == "int")
+            else if (elementType == "int" || elementType == "i32")
                 elementQuarkType = QuarkType::Int;
+            else if (elementType == "i8")
+                elementQuarkType = QuarkType::I8;
+            else if (elementType == "i16")
+                elementQuarkType = QuarkType::I16;
+            else if (elementType == "i64")
+                elementQuarkType = QuarkType::I64;
+            else if (elementType == "u8")
+                elementQuarkType = QuarkType::U8;
+            else if (elementType == "u16")
+                elementQuarkType = QuarkType::U16;
+            else if (elementType == "u32")
+                elementQuarkType = QuarkType::U32;
+            else if (elementType == "u64")
+                elementQuarkType = QuarkType::U64;
             else if (elementType == "float")
                 elementQuarkType = QuarkType::Float;
             else if (elementType == "double")
@@ -569,9 +667,37 @@ void StatementCodeGen::genFunctionStmt(FunctionAST *f, LLVMValueRef putsFn)
     {
         LLVMBuildRetVoid(builder_);
     }
-    else if (f->returnType == "int")
+    else if (f->returnType == "int" || f->returnType == "i32")
     {
         LLVMBuildRet(builder_, LLVMConstInt(int32_t_, 0, 0));
+    }
+    else if (f->returnType == "i8")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt8TypeInContext(ctx_), 0, 0));
+    }
+    else if (f->returnType == "i16")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt16TypeInContext(ctx_), 0, 0));
+    }
+    else if (f->returnType == "i64")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt64TypeInContext(ctx_), 0, 0));
+    }
+    else if (f->returnType == "u8")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt8TypeInContext(ctx_), 0, 0));
+    }
+    else if (f->returnType == "u16")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt16TypeInContext(ctx_), 0, 0));
+    }
+    else if (f->returnType == "u32")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt32TypeInContext(ctx_), 0, 0));
+    }
+    else if (f->returnType == "u64")
+    {
+        LLVMBuildRet(builder_, LLVMConstInt(LLVMInt64TypeInContext(ctx_), 0, 0));
     }
     else if (f->returnType == "float")
     {
@@ -814,6 +940,70 @@ void StatementCodeGen::genVarDeclStmt(VarDeclStmt *vdecl)
         actualType = "int";
         varType = int32_t_;
         val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        break;
+    case QuarkType::I8:
+        actualType = "i8";
+        varType = LLVMInt8TypeInContext(ctx_);
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        if (val)
+        {
+            val = LLVMBuildTrunc(builder_, val, LLVMInt8TypeInContext(ctx_), "trunc_to_i8");
+        }
+        break;
+    case QuarkType::I16:
+        actualType = "i16";
+        varType = LLVMInt16TypeInContext(ctx_);
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        if (val)
+        {
+            val = LLVMBuildTrunc(builder_, val, LLVMInt16TypeInContext(ctx_), "trunc_to_i16");
+        }
+        break;
+    case QuarkType::I32:
+        actualType = "i32";
+        varType = int32_t_;
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        break;
+    case QuarkType::I64:
+        actualType = "i64";
+        varType = LLVMInt64TypeInContext(ctx_);
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        if (val)
+        {
+            val = LLVMBuildSExt(builder_, val, LLVMInt64TypeInContext(ctx_), "sext_to_i64");
+        }
+        break;
+    case QuarkType::U8:
+        actualType = "u8";
+        varType = LLVMInt8TypeInContext(ctx_);
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        if (val)
+        {
+            val = LLVMBuildTrunc(builder_, val, LLVMInt8TypeInContext(ctx_), "trunc_to_u8");
+        }
+        break;
+    case QuarkType::U16:
+        actualType = "u16";
+        varType = LLVMInt16TypeInContext(ctx_);
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        if (val)
+        {
+            val = LLVMBuildTrunc(builder_, val, LLVMInt16TypeInContext(ctx_), "trunc_to_u16");
+        }
+        break;
+    case QuarkType::U32:
+        actualType = "u32";
+        varType = int32_t_;
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        break;
+    case QuarkType::U64:
+        actualType = "u64";
+        varType = LLVMInt64TypeInContext(ctx_);
+        val = expressionCodeGen_->genExprInt(vdecl->init.get());
+        if (val)
+        {
+            val = LLVMBuildZExt(builder_, val, LLVMInt64TypeInContext(ctx_), "zext_to_u64");
+        }
         break;
     case QuarkType::Map:
         actualType = "map";
@@ -1804,8 +1994,22 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
         if (type.size() > 2 && type.substr(type.size() - 2) == "[]")
         {
             std::string elem = type.substr(0, type.size() - 2);
-            if (elem == "int")
+            if (elem == "int" || elem == "i32")
                 return LLVMPointerType(int32_t_, 0);
+            if (elem == "i8")
+                return LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            if (elem == "i16")
+                return LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            if (elem == "i64")
+                return LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
+            if (elem == "u8")
+                return LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            if (elem == "u16")
+                return LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            if (elem == "u32")
+                return LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            if (elem == "u64")
+                return LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
             if (elem == "float")
                 return LLVMPointerType(float_t_, 0);
             if (elem == "double")
@@ -1835,9 +2039,37 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
             {
                 baseTy = LLVMInt8TypeInContext(ctx_);
             }
-            else if (base == "int")
+            else if (base == "int" || base == "i32")
             {
                 baseTy = int32_t_;
+            }
+            else if (base == "i8")
+            {
+                baseTy = LLVMInt8TypeInContext(ctx_);
+            }
+            else if (base == "i16")
+            {
+                baseTy = LLVMInt16TypeInContext(ctx_);
+            }
+            else if (base == "i64")
+            {
+                baseTy = LLVMInt64TypeInContext(ctx_);
+            }
+            else if (base == "u8")
+            {
+                baseTy = LLVMInt8TypeInContext(ctx_);
+            }
+            else if (base == "u16")
+            {
+                baseTy = LLVMInt16TypeInContext(ctx_);
+            }
+            else if (base == "u32")
+            {
+                baseTy = LLVMInt32TypeInContext(ctx_);
+            }
+            else if (base == "u64")
+            {
+                baseTy = LLVMInt64TypeInContext(ctx_);
             }
             else if (base == "float")
             {
@@ -1870,8 +2102,22 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
             }
             return ty;
         }
-        if (type == "int")
+        if (type == "int" || type == "i32")
             return int32_t_;
+        else if (type == "i8")
+            return LLVMInt8TypeInContext(ctx_);
+        else if (type == "i16")
+            return LLVMInt16TypeInContext(ctx_);
+        else if (type == "i64")
+            return LLVMInt64TypeInContext(ctx_);
+        else if (type == "u8")
+            return LLVMInt8TypeInContext(ctx_);
+        else if (type == "u16")
+            return LLVMInt16TypeInContext(ctx_);
+        else if (type == "u32")
+            return LLVMInt32TypeInContext(ctx_);
+        else if (type == "u64")
+            return LLVMInt64TypeInContext(ctx_);
         else if (type == "float")
             return LLVMFloatTypeInContext(ctx_);
         else if (type == "double")
@@ -1908,8 +2154,22 @@ void StatementCodeGen::declareExternFunction(ExternFunctionAST *externFunc)
         {
             return QuarkType::Pointer;
         }
-        if (type == "int")
+        if (type == "int" || type == "i32")
             return QuarkType::Int;
+        else if (type == "i8")
+            return QuarkType::I8;
+        else if (type == "i16")
+            return QuarkType::I16;
+        else if (type == "i64")
+            return QuarkType::I64;
+        else if (type == "u8")
+            return QuarkType::U8;
+        else if (type == "u16")
+            return QuarkType::U16;
+        else if (type == "u32")
+            return QuarkType::U32;
+        else if (type == "u64")
+            return QuarkType::U64;
         else if (type == "float")
             return QuarkType::Float;
         else if (type == "double")
@@ -2196,9 +2456,37 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
         {
             llvmType = int8ptr_t_;
         }
-        else if (fieldType == "int")
+        else if (fieldType == "int" || fieldType == "i32")
         {
             llvmType = int32_t_;
+        }
+        else if (fieldType == "i8")
+        {
+            llvmType = LLVMInt8TypeInContext(ctx_);
+        }
+        else if (fieldType == "i16")
+        {
+            llvmType = LLVMInt16TypeInContext(ctx_);
+        }
+        else if (fieldType == "i64")
+        {
+            llvmType = LLVMInt64TypeInContext(ctx_);
+        }
+        else if (fieldType == "u8")
+        {
+            llvmType = LLVMInt8TypeInContext(ctx_);
+        }
+        else if (fieldType == "u16")
+        {
+            llvmType = LLVMInt16TypeInContext(ctx_);
+        }
+        else if (fieldType == "u32")
+        {
+            llvmType = LLVMInt32TypeInContext(ctx_);
+        }
+        else if (fieldType == "u64")
+        {
+            llvmType = LLVMInt64TypeInContext(ctx_);
         }
         else if (fieldType == "float")
         {
@@ -2219,9 +2507,37 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
             {
                 llvmType = LLVMPointerType(int8ptr_t_, 0);
             }
-            else if (elementType == "int")
+            else if (elementType == "int" || elementType == "i32")
             {
                 llvmType = LLVMPointerType(int32_t_, 0);
+            }
+            else if (elementType == "i8")
+            {
+                llvmType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i16")
+            {
+                llvmType = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "i64")
+            {
+                llvmType = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u8")
+            {
+                llvmType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u16")
+            {
+                llvmType = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u32")
+            {
+                llvmType = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            }
+            else if (elementType == "u64")
+            {
+                llvmType = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
             }
             else if (elementType == "bool")
             {
@@ -2239,9 +2555,37 @@ void StatementCodeGen::createStructType(StructDefStmt *structDef)
             {
                 llvmType = LLVMPointerType(int8ptr_t_, 0);
             }
-            else if (base == "int")
+            else if (base == "int" || base == "i32")
             {
                 llvmType = LLVMPointerType(int32_t_, 0);
+            }
+            else if (base == "i8")
+            {
+                llvmType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (base == "i16")
+            {
+                llvmType = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (base == "i64")
+            {
+                llvmType = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
+            }
+            else if (base == "u8")
+            {
+                llvmType = LLVMPointerType(LLVMInt8TypeInContext(ctx_), 0);
+            }
+            else if (base == "u16")
+            {
+                llvmType = LLVMPointerType(LLVMInt16TypeInContext(ctx_), 0);
+            }
+            else if (base == "u32")
+            {
+                llvmType = LLVMPointerType(LLVMInt32TypeInContext(ctx_), 0);
+            }
+            else if (base == "u64")
+            {
+                llvmType = LLVMPointerType(LLVMInt64TypeInContext(ctx_), 0);
             }
             else if (base == "float")
             {

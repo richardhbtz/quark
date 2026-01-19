@@ -6406,9 +6406,37 @@ LLVMTypeRef ExpressionCodeGen::mapPointerType(const std::string &typeName)
     {
         baseTy = LLVMInt8TypeInContext(ctx_);
     }
-    else if (work == "int")
+    else if (work == "int" || work == "i32")
     {
         baseTy = int32_t_;
+    }
+    else if (work == "i8")
+    {
+        baseTy = LLVMInt8TypeInContext(ctx_);
+    }
+    else if (work == "i16")
+    {
+        baseTy = LLVMInt16TypeInContext(ctx_);
+    }
+    else if (work == "i64")
+    {
+        baseTy = LLVMInt64TypeInContext(ctx_);
+    }
+    else if (work == "u8")
+    {
+        baseTy = LLVMInt8TypeInContext(ctx_);
+    }
+    else if (work == "u16")
+    {
+        baseTy = LLVMInt16TypeInContext(ctx_);
+    }
+    else if (work == "u32")
+    {
+        baseTy = LLVMInt32TypeInContext(ctx_);
+    }
+    else if (work == "u64")
+    {
+        baseTy = LLVMInt64TypeInContext(ctx_);
     }
     else if (work == "float")
     {
@@ -6449,7 +6477,22 @@ LLVMTypeRef ExpressionCodeGen::quarkTypeToLLVMType(QuarkType type)
     switch (type)
     {
     case QuarkType::Int:
+    case QuarkType::I32:
         return int32_t_;
+    case QuarkType::I8:
+        return LLVMInt8TypeInContext(ctx_);
+    case QuarkType::I16:
+        return LLVMInt16TypeInContext(ctx_);
+    case QuarkType::I64:
+        return LLVMInt64TypeInContext(ctx_);
+    case QuarkType::U8:
+        return LLVMInt8TypeInContext(ctx_);
+    case QuarkType::U16:
+        return LLVMInt16TypeInContext(ctx_);
+    case QuarkType::U32:
+        return LLVMInt32TypeInContext(ctx_);
+    case QuarkType::U64:
+        return LLVMInt64TypeInContext(ctx_);
     case QuarkType::Float:
         return float_t_;
     case QuarkType::Double:

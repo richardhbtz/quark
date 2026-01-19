@@ -32,7 +32,15 @@ enum TokenKind
     tok_true,
     tok_false,
     tok_bool,
-    tok_int,     // int type (default integer type)
+    tok_int,     // int type (default integer type, same as i32)
+    tok_i8,      // i8 type (8-bit signed integer)
+    tok_i16,     // i16 type (16-bit signed integer)
+    tok_i32,     // i32 type (32-bit signed integer)
+    tok_i64,     // i64 type (64-bit signed integer)
+    tok_u8,      // u8 type (8-bit unsigned integer)
+    tok_u16,     // u16 type (16-bit unsigned integer)
+    tok_u32,     // u32 type (32-bit unsigned integer)
+    tok_u64,     // u64 type (64-bit unsigned integer)
     tok_str,     // str type
     tok_float,   // float type (32-bit floating point)
     tok_double,  // double type (64-bit floating point)

@@ -4,8 +4,8 @@
 // EXPECT: Callback result: 15
 
 extern "C" {
-    // Test named parameters
-    int abs(value: int);
+    // Test named parameters (Note: using abs_i32 builtin instead of C abs because builtin shadows it)
+    // int abs(value: int);
     
     // Test void* parameters  
     void* malloc(size: int);
@@ -20,9 +20,9 @@ int add(a: int, b: int) {
 }
 
 int main() {
-    // Test abs with named param
-    print("{}", abs(-42));
-    print("{}", abs(-7));
+    // Test abs_i32 builtin (integer absolute value)
+    print("{}", abs_i32(-42));
+    print("{}", abs_i32(-7));
     
     // Test void* function pointer
     void* callback = &add;

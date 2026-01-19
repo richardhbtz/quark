@@ -3,15 +3,14 @@
 // EXPECT: A
 // EXPECT: z
 extern "C" {
-    int abs(int);
     int toupper(int);
     int tolower(int);
     int putchar(int);
 }
 
 int main() {
-    print("{}", abs(-42));
-    print("{}", abs(-7));
+    print("{}", abs_i32(-42));
+    print("{}", abs_i32(-7));
     var a: int = 97;   // 'a'
     var A: int = toupper(a);
     putchar(A);
